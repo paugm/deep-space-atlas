@@ -1,4 +1,12 @@
 import type { Inventory, MaterialId } from "./config.ts";
+import type { BuildId } from "./builds.ts";
+import {
+  BUILD_DEFINITIONS,
+  BUILD_ORDER,
+  canAffordBuild,
+  formatBuildCost,
+  missingPrerequisites,
+} from "./builds.ts";
 import type { ProfileView } from "./player-profile.ts";
 import {
   MATERIAL_ORDER,
@@ -19,14 +27,21 @@ import {
 export interface UIActions {
   onPlay: () => void;
   onToggleInventory: () => void;
+  onToggleBuildMenu: () => void;
   onToggleProfile: () => void;
   onDismissCommandBar: () => void;
   onCommandSubmit: (line: string) => void;
+  onBuildItem: (buildId: BuildId) => void;
   onProfileRename: (name: string) => void;
   onTravelToVisited: (seedHex: string) => void;
   onSaveGame: () => void;
   onLoadGame: (file: File) => void;
   onNewGame: () => void;
+}
+
+export interface BuildMenuView {
+  inventory: Inventory;
+  builds: readonly BuildId[];
 }
 
 export interface WorldSummary {
@@ -51,6 +66,7 @@ export interface UI {
   notify(text: string, color: string): void;
   setFuel(fuel: number): void;
   setInventoryVisible(visible: boolean): void;
+  setBuildMenuVisible(visible: boolean): void;
   setProfileVisible(visible: boolean): void;
   setCommandBarVisible(visible: boolean): void;
   setCommandFeedback(
@@ -58,6 +74,7 @@ export interface UI {
     tone: "ok" | "error" | "neutral",
   ): void;
   updateProfile(view: ProfileView, currentSeedHex: string | null): void;
+  updateBuildMenu(view: BuildMenuView): void;
   setMiningProgress(progress: number): void;
   setTargetLabel(label: string): void;
   setWorldSummary(world: WorldSummary): void;
@@ -112,6 +129,11 @@ export function createUI(): UI {
     inventoryOverlay: byId("invOverlay", HTMLDivElement),
     inventoryClose: byId("invClose", HTMLButtonElement),
     inventoryGrid: byId("invGrid", HTMLDivElement),
+    buildOverlay: byId("buildOverlay", HTMLDivElement),
+    buildClose: byId("buildClose", HTMLButtonElement),
+    buildRecipes: byId("buildRecipes", HTMLDivElement),
+    buildInstalled: byId("buildInstalled", HTMLDivElement),
+    buildInstalledEmpty: byId("buildInstalledEmpty", HTMLParagraphElement),
     profileOverlay: byId("profileOverlay", HTMLDivElement),
     profileClose: byId("profileClose", HTMLButtonElement),
     profileName: byId("profileName", HTMLInputElement),
@@ -149,6 +171,18 @@ export function createUI(): UI {
   let lastPrompt = "";
   let lastPetCompassKey = "";
   let boundActions: UIActions | null = null;
+  /** Blocks RESUME click-through right after pointer lock exits onto the button. */
+  let playButtonArmed = true;
+  let playButtonArmTimer: number | null = null;
+
+  function armPlayButtonSoon(delayMs = 450): void {
+    playButtonArmed = false;
+    if (playButtonArmTimer !== null) window.clearTimeout(playButtonArmTimer);
+    playButtonArmTimer = window.setTimeout(() => {
+      playButtonArmed = true;
+      playButtonArmTimer = null;
+    }, delayMs);
+  }
 
   function shade(hex: string, factor: number): string {
     const value = Number.parseInt(hex.slice(1), 16);
@@ -511,6 +545,9 @@ export function createUI(): UI {
         elements.startTitle.textContent = "STANDBY";
         elements.playButton.textContent = "RESUME";
         elements.saveGameButton.classList.remove("hidden");
+        // Cursor often reappears over RESUME after Escape exits pointer lock;
+        // ignore the trailing click/mouseup so Standby stays put.
+        armPlayButtonSoon();
         break;
       default: {
         const exhaustiveMode: never = mode;
@@ -518,12 +555,26 @@ export function createUI(): UI {
       }
     }
     elements.startOverlay.classList.remove("hidden");
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
   }
 
   function setInventoryVisible(visible: boolean): void {
     elements.inventoryOverlay.classList.toggle("hidden", !visible);
     if (visible) {
       elements.startOverlay.classList.add("hidden");
+      elements.buildOverlay.classList.add("hidden");
+      elements.profileOverlay.classList.add("hidden");
+      elements.commandOverlay.classList.add("hidden");
+    }
+  }
+
+  function setBuildMenuVisible(visible: boolean): void {
+    elements.buildOverlay.classList.toggle("hidden", !visible);
+    if (visible) {
+      elements.startOverlay.classList.add("hidden");
+      elements.inventoryOverlay.classList.add("hidden");
       elements.profileOverlay.classList.add("hidden");
       elements.commandOverlay.classList.add("hidden");
     }
@@ -534,6 +585,7 @@ export function createUI(): UI {
     if (visible) {
       elements.startOverlay.classList.add("hidden");
       elements.inventoryOverlay.classList.add("hidden");
+      elements.buildOverlay.classList.add("hidden");
       elements.commandOverlay.classList.add("hidden");
     }
   }
@@ -543,6 +595,7 @@ export function createUI(): UI {
     if (visible) {
       elements.startOverlay.classList.add("hidden");
       elements.inventoryOverlay.classList.add("hidden");
+      elements.buildOverlay.classList.add("hidden");
       elements.profileOverlay.classList.add("hidden");
       elements.commandInput.value = "";
       setCommandFeedback("", "neutral");
@@ -559,6 +612,89 @@ export function createUI(): UI {
     elements.commandFeedback.textContent = text;
     elements.commandFeedback.classList.toggle("ok", tone === "ok");
     elements.commandFeedback.classList.toggle("error", tone === "error");
+  }
+
+  function updateBuildMenu(view: BuildMenuView): void {
+    const owned = new Set(view.builds);
+    elements.buildRecipes.replaceChildren();
+    elements.buildInstalled.replaceChildren();
+
+    for (const buildId of BUILD_ORDER) {
+      const definition = BUILD_DEFINITIONS[buildId];
+      if (owned.has(buildId)) continue;
+
+      const missing = missingPrerequisites(definition, view.builds);
+      const affordable = canAffordBuild(definition.cost, view.inventory);
+      const locked = missing.length > 0;
+      const card = document.createElement("div");
+      card.className = locked ? "build-card locked" : "build-card";
+
+      const main = document.createElement("div");
+      main.className = "build-card-main";
+
+      const label = document.createElement("div");
+      label.className = "build-card-label";
+      label.textContent = definition.label;
+
+      const blurb = document.createElement("div");
+      blurb.className = "build-card-blurb";
+      blurb.textContent = definition.blurb;
+
+      const meta = document.createElement("div");
+      meta.className =
+        !locked && affordable ? "build-card-meta ready" : "build-card-meta";
+      if (locked) {
+        const names = missing
+          .map((id) => BUILD_DEFINITIONS[id].label)
+          .join(", ");
+        meta.textContent = `Requires ${names}`;
+      } else {
+        meta.textContent = formatBuildCost(definition.cost);
+      }
+
+      main.append(label, blurb, meta);
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "BUILD";
+      button.disabled = locked || !affordable;
+      button.addEventListener("click", () => {
+        boundActions?.onBuildItem(buildId);
+      });
+
+      card.append(main, button);
+      elements.buildRecipes.append(card);
+    }
+
+    const installedIds = BUILD_ORDER.filter((id) => owned.has(id));
+    const hasInstalled = installedIds.length > 0;
+    elements.buildInstalledEmpty.classList.toggle("hidden", hasInstalled);
+    elements.buildInstalled.classList.toggle("hidden", !hasInstalled);
+
+    for (const buildId of installedIds) {
+      const definition = BUILD_DEFINITIONS[buildId];
+      const card = document.createElement("div");
+      card.className = "build-card installed";
+
+      const main = document.createElement("div");
+      main.className = "build-card-main";
+
+      const label = document.createElement("div");
+      label.className = "build-card-label";
+      label.textContent = definition.label;
+
+      const blurb = document.createElement("div");
+      blurb.className = "build-card-blurb";
+      blurb.textContent = definition.blurb;
+
+      const meta = document.createElement("div");
+      meta.className = "build-card-meta ready";
+      meta.textContent = "Installed";
+
+      main.append(label, blurb, meta);
+      card.append(main);
+      elements.buildInstalled.append(card);
+    }
   }
 
   function updateProfile(
@@ -617,6 +753,7 @@ export function createUI(): UI {
   function showPlaying(): void {
     elements.startOverlay.classList.add("hidden");
     elements.inventoryOverlay.classList.add("hidden");
+    elements.buildOverlay.classList.add("hidden");
     elements.profileOverlay.classList.add("hidden");
     elements.commandOverlay.classList.add("hidden");
   }
@@ -659,7 +796,10 @@ export function createUI(): UI {
 
   function bindActions(actions: UIActions): void {
     boundActions = actions;
-    elements.playButton.addEventListener("click", actions.onPlay);
+    elements.playButton.addEventListener("click", () => {
+      if (!playButtonArmed) return;
+      actions.onPlay();
+    });
     elements.saveGameButton.addEventListener("click", () => {
       actions.onSaveGame();
       elements.saveGameButton.blur();
@@ -680,6 +820,10 @@ export function createUI(): UI {
     elements.inventoryClose.addEventListener(
       "click",
       actions.onToggleInventory,
+    );
+    elements.buildClose.addEventListener(
+      "click",
+      actions.onToggleBuildMenu,
     );
     elements.profileClose.addEventListener(
       "click",
@@ -720,10 +864,12 @@ export function createUI(): UI {
     notify,
     setFuel,
     setInventoryVisible,
+    setBuildMenuVisible,
     setProfileVisible,
     setCommandBarVisible,
     setCommandFeedback,
     updateProfile,
+    updateBuildMenu,
     setMiningProgress,
     setTargetLabel,
     setWorldSummary,

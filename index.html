@@ -93,7 +93,7 @@
 
       <div id="hintBar" class="hudbox">
         HOLD <b>LMB</b> EXTRACT / TAME &nbsp;·&nbsp; HOLD <b>SPACE</b> JET
-        &nbsp;·&nbsp; <b>I</b> CARGO
+        &nbsp;·&nbsp; <b>I</b> CARGO &nbsp;·&nbsp; <b>B</b> BUILD
       </div>
 
       <div id="roverHintBar" class="hudbox">
@@ -168,6 +168,7 @@
           </div>
           <div class="ctl"><span>SPRINT</span><kbd>SHIFT</kbd></div>
           <div class="ctl"><span>CARGO</span><kbd>I</kbd></div>
+          <div class="ctl"><span>BUILD</span><kbd>B</kbd></div>
           <div class="ctl"><span>PROFILE</span><kbd>P</kbd></div>
           <div class="ctl"><span>MUTE</span><kbd>M</kbd></div>
         </div>
@@ -220,6 +221,27 @@
         <div id="invGrid"></div>
         <div class="btnrow">
           <button id="invClose" type="button">CLOSE&nbsp;&nbsp;[ I ]</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="buildOverlay" class="overlay hidden">
+      <div class="panel build-panel">
+        <div class="eyebrow">FABRICATOR</div>
+        <h1 class="inventory-title">BUILD BAY</h1>
+        <p class="build-intro">
+          Spend cargo to install permanent gear. Installed builds stay on your
+          profile across planets.
+        </p>
+        <div class="build-section-title">AVAILABLE</div>
+        <div id="buildRecipes" class="build-list"></div>
+        <div class="build-section-title">INSTALLED</div>
+        <p id="buildInstalledEmpty" class="build-empty">
+          No gear installed yet.
+        </p>
+        <div id="buildInstalled" class="build-list hidden"></div>
+        <div class="btnrow">
+          <button id="buildClose" type="button">CLOSE&nbsp;&nbsp;[ B ]</button>
         </div>
       </div>
     </div>

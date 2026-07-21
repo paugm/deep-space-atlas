@@ -102,15 +102,17 @@ export function getAimHit(
   camera: THREE.Camera,
   raycaster: THREE.Raycaster,
   screenCenter: THREE.Vector2,
+  range: number = MINING_RANGE,
 ): AimHit | null {
   raycaster.setFromCamera(screenCenter, camera);
+  raycaster.far = range;
   const direction = raycaster.ray.direction;
   const origin = raycaster.ray.origin;
 
   const candidates = world.aimIndex.query(
     origin.x,
     origin.z,
-    MINING_RANGE + 4,
+    range + 4,
   );
 
   const rockIndices: number[] = [];
@@ -225,10 +227,10 @@ export function getAimHit(
     }
   }
 
-  const caveHit = world.caves?.raycast(origin, direction, MINING_RANGE);
+  const caveHit = world.caves?.raycast(origin, direction, range);
   const terrainHit =
     caveHit === undefined
-      ? raymarchTerrain(world, origin, direction, MINING_RANGE)
+      ? raymarchTerrain(world, origin, direction, range)
       : caveHit === null
         ? null
         : {

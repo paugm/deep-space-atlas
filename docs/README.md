@@ -2,8 +2,8 @@
 
 This is the working reference for the game. The public GitHub page is
 [`README.md`](../README.md); contributor notes are in
-[`CONTRIBUTING.md`](../CONTRIBUTING.md), and slash commands are in
-[`commands.md`](commands.md).
+[`CONTRIBUTING.md`](../CONTRIBUTING.md), slash commands are in
+[`commands.md`](commands.md), and the fabricator is in [`builds.md`](builds.md).
 
 When you change architecture, modules, saves, world generation, or workflows,
 update this file too. If a feature count changes, update the root README spec
@@ -57,7 +57,8 @@ setup happen once the repo is public.
 | Fauna | `js/fauna/` | Wild walkers, tame/follow, pet entities |
 | Vehicles | `js/vehicles/` | Seeded rovers, board/drive, rover entities |
 | Planet save | `js/planet-save.ts` | Per-seed patches in IndexedDB |
-| Profile | `js/player-profile.ts` | Callsign, cargo, playtime, audio mute, visits |
+| Profile | `js/player-profile.ts` | Callsign, cargo, playtime, audio mute, fabricator builds, visits |
+| Builds | `js/builds.ts` | Fabricator catalog, costs, `tryBuild`, stacked modifiers (pure) |
 | Campaign file | `js/game-save.ts` | Portable `.deepspaceatlas` |
 | DB | `js/save-db.ts` | Shared IndexedDB open (`planets` + `profile`) |
 | UI | `js/ui.ts` | DOM only; callbacks to `main.ts` |
@@ -85,16 +86,17 @@ cockpit takeoff camera ride, and `cinema.ts` draws the black-fade overlay.
 
 ```text
 config.ts
-  ├── js/world/* · gameplay.ts · collision.ts · water.ts
+  ├── js/builds.ts · js/world/* · gameplay.ts · collision.ts · water.ts
   ├── planet-save.ts · player-profile.ts · game-save.ts · ui.ts · js/commands/*
 
 audio.ts (+ catalog / rules) ──> gameplay.ts / js/space/* / cinema.ts
 world.ts ───────> gameplay.ts · js/space/*   (re-export / types)
+js/builds.ts ──> gameplay.ts · player-profile.ts · ui.ts · js/commands/*
 
 planet-save.ts ──(type)──> world.ts
 js/world/* ──(type)──> planet-save.ts
 save-db.ts / game-save.ts ──> planet-save.ts · player-profile.ts
-js/commands/* ──> planet-save.ts (seed parse only)
+js/commands/* ──> planet-save.ts (seed parse only) · builds.ts
 
 main.ts wires world · gameplay · space · saves · ui · commands
 ui.ts <── callbacks ── main.ts
@@ -279,11 +281,13 @@ in planet patches. The space cockpit pose is not persisted.
 
 #### Profile
 
-The profile holds callsign, cargo, playtime, master audio mute, and visited
-planets. Mute is off by default, so sound is on; **M** / `/mute` saves the
-choice here. The profile only caches `hasPet`; pets remain planet-bound in
-`entities[]`. The profile document version is `PLAYER_PROFILE_VERSION`; loading
-v1 adds `muted: false`.
+The profile holds callsign, cargo, playtime, master audio mute, installed
+fabricator builds, and visited planets. Mute is off by default, so sound is on;
+**M** / `/mute` saves the choice here. Builds are permanent profile upgrades
+(see [`builds.md`](builds.md)); **B** opens the Build Bay. The profile only
+caches `hasPet`; pets remain planet-bound in `entities[]`. The profile document
+version is `PLAYER_PROFILE_VERSION` (3). Loading v1 adds `muted: false` and
+empty `builds`; loading v2 adds empty `builds`.
 
 #### Portable file (`.deepspaceatlas`, `v: 2`)
 
@@ -305,14 +309,15 @@ migration shims.
 ### Mining
 
 Hold extract on one target to fill a progress cycle. Retargeting or releasing
-resets it.
+resets it. Cycle time and reach follow fabricator modifiers when builds are
+installed (see [`builds.md`](builds.md)).
 
 | Target | Yield |
 | --- | --- |
-| Terrain | Silicate + permanent 3.2 m directional cave bite |
+| Terrain | Silicate + permanent directional cave bite (size follows dig modifiers) |
 | Boulders | Silicate |
 | Flora | Carbon |
-| Deposits | Their material; shrink with remaining capacity |
+| Deposits | Their material; shrink with remaining capacity; Resonance Tip adds +1 |
 | Aetherite | High altitude only |
 
 Look down to open a shaft; look into a slope or mountain to extend a tunnel.
@@ -425,7 +430,8 @@ actors in a cave: one XZ coordinate can have several surfaces.
 Vitest covers pure deterministic logic under `tests/`: config math, saves,
 cave brush/chunk math, field raycasts, capsule collision, mesh extraction,
 world helpers, space math, land/launch cinematic curves, fauna, vehicles,
-commands, planet entities, audio catalog and mapping helpers, and mute gain.
+commands, fabricator builds, planet entities, audio catalog and mapping
+helpers, and mute gain.
 
 Do not build brittle mocks around Three.js, Web Audio graphs, the DOM, or all
 of `main` / `gameplay` / `ui`. Pull out helpers when a rule needs coverage. Add
@@ -458,6 +464,13 @@ chunk/cell/brush/streaming dimensions.
    working.
 4. Cover selection / helpers in `tests/world-generate.test.ts`.
 5. Bump `WORLD_CONTENT_REVISION` if deposit placement or identity changes.
+
+### Add a fabricator build
+
+See [`builds.md`](builds.md). Add the id to `BuildId`, `BUILD_DEFINITIONS`, and
+`BUILD_ORDER` in `js/builds.ts`, extend `BuildEffect` / `resolveBuildModifiers`
+only when a new modifier kind is required, cover it in `tests/builds.test.ts`,
+and keep the catalog table in `builds.md` current.
 
 ### Add a UI panel
 

@@ -42,7 +42,7 @@ see [`CREDITS.md`](CREDITS.md).
 
 <pre>
 ┌──────────────────────────────────────────────────────────────┐
-│  DEEP SPACE ATLAS //// SPEC SHEET                   v0.18.2  │
+│  DEEP SPACE ATLAS //// SPEC SHEET                   v0.19.0  │
 ├──────────────────────────────────────────────────────────────┤
 │  WORLDS                                                      │
 │    PLANETS ........ 4,294,967,296                            │
@@ -54,6 +54,7 @@ see [`CREDITS.md`](CREDITS.md).
 │    MATERIALS ...... 5  Silicate · Iron · Carbon · Copper ·   │
 │                        Aetherite                             │
 │    DEPOSITS ....... 4 mineable types                         │
+│    FABRICATOR ..... 14 builds · jetpack · extractor · mobility · rover │
 │    FAUNA .......... 13 species · ~22% of worlds · 1–3 each   │
 │    ROVERS ......... 3 kinds · 0–2 per planet                 │
 │    SHIP ........... 1 survey vessel                          │
@@ -81,11 +82,12 @@ see [`CREDITS.md`](CREDITS.md).
 | Hold Space (airborne) | Jetpack |
 | Shift (forward) | Sprint (disabled while swimming) |
 | I | Cargo hold |
+| B | Build bay (fabricator) |
 | P | Commander profile |
 | M | Mute / unmute audio |
 | E (look at rover) | Board / exit a wheeled rover |
 | E near ship | Board and launch to space |
-| Escape | Release pointer / close overlays |
+| Escape | Pause to Standby / close overlays (does not resume) |
 
 ### In the cockpit
 

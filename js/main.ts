@@ -188,6 +188,9 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     onInventoryChanged(inventory) {
       profileSession.setInventory(inventory);
     },
+    onBuildsChanged(builds) {
+      profileSession.setBuilds(builds);
+    },
     onProfileOpen() {
       refreshProfileUi();
     },
@@ -309,6 +312,7 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     }
 
     gameplay.loadInventory(profileSession.get().inventory);
+    gameplay.loadBuilds(profileSession.get().builds);
     noteVisit(world);
     showWorldSummary(world);
     mode = "planet";
@@ -549,6 +553,16 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
       },
       // Command UI already notifies from the result message.
       toggleMute: () => toggleMuteAudio({ notify: false }),
+      buildItem(token) {
+        const result = gameplay.attemptBuild(token, { free: true });
+        if (result.ok) {
+          return { ok: true as const, label: result.label };
+        }
+        if (result.reason === "already-owned") {
+          return { ok: false as const, reason: "already-owned" as const };
+        }
+        return { ok: false as const, reason: "unknown" as const };
+      },
     }),
   );
 
@@ -574,6 +588,7 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     profileSession.adopt(snapshot.profile);
     applyProfileMute();
     gameplay.loadInventory(snapshot.profile.inventory);
+    gameplay.loadBuilds(snapshot.profile.builds);
     if (resumeSeed !== null) {
       await openPlanetWorld(resumeSeed, { showStartOverlay: false });
     }
@@ -586,11 +601,41 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     onToggleInventory(): void {
       gameplay.toggleInventory();
     },
+    onToggleBuildMenu(): void {
+      gameplay.toggleBuildMenu();
+    },
     onToggleProfile(): void {
       gameplay.toggleProfile();
     },
     onDismissCommandBar(): void {
       gameplay.dismissCommandBar();
+    },
+    onBuildItem(buildId): void {
+      const result = gameplay.attemptBuild(buildId);
+      if (result.ok) {
+        Sound.uiClick();
+        ui.notify(`INSTALLED · ${result.label.toUpperCase()}`, "#7df0cf");
+        return;
+      }
+      Sound.uiError();
+      switch (result.reason) {
+        case "already-owned":
+          ui.notify("ALREADY INSTALLED", "#ffb347");
+          break;
+        case "cannot-afford":
+          ui.notify("INSUFFICIENT CARGO", "#ff6b6b");
+          break;
+        case "missing-prerequisite":
+          ui.notify("PREREQUISITE MISSING", "#ffb347");
+          break;
+        case "unknown":
+          ui.notify("UNKNOWN SCHEMATIC", "#ff6b6b");
+          break;
+        default: {
+          const exhaustive: never = result.reason;
+          throw new Error(`Unhandled build reason: ${String(exhaustive)}`);
+        }
+      }
     },
     onCommandSubmit(line: string): void {
       void commands.dispatch(line).then((result) => {
@@ -664,6 +709,7 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
             profileSession.adopt(document.profile);
             applyProfileMute();
             gameplay.loadInventory(profileSession.get().inventory);
+            gameplay.loadBuilds(profileSession.get().builds);
             const resumeSeed =
               hexToSeed(document.lastSeed) ??
               hexToSeed(
@@ -711,6 +757,7 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
             profileSession.adopt(emptyProfile);
             applyProfileMute();
             gameplay.loadInventory(profileSession.get().inventory);
+            gameplay.loadBuilds(profileSession.get().builds);
             await openPlanetWorld(randomSeed());
             ui.notify("NEW CAMPAIGN", "#7df0cf");
           } catch (error) {
@@ -763,6 +810,7 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     profileHydrated = true;
     applyProfileMute();
     gameplay.loadInventory(profileSession.get().inventory);
+    gameplay.loadBuilds(profileSession.get().builds);
     const lastSeedHex = lastVisitedSeedHex(profileSession.get().visited);
     const resumeSeed =
       lastSeedHex !== null ? hexToSeed(lastSeedHex) : null;

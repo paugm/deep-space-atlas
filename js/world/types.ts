@@ -249,10 +249,14 @@ export interface WorldSystem {
   refreshDeposit(type: DepositType, index: number): void;
   /** Optional camera Y drives underwater fog / water-plane opacity. */
   updateDayNight(time: number, cameraY?: number): void;
-  carveCave(point: CavePoint, direction: CavePoint): CaveBrush | null;
+  carveCave(
+    point: CavePoint,
+    direction: CavePoint,
+    options?: { radius?: number; length?: number },
+  ): CaveBrush | null;
   applyPlanetPatch(document: PlanetDocument): Promise<void>;
   updateTerrain(viewPosition: CavePoint): readonly CaveBrush[];
-  getAimHit(camera: THREE.Camera): AimHit | null;
+  getAimHit(camera: THREE.Camera, range?: number): AimHit | null;
   readonly current: World | null;
 }
 

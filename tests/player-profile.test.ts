@@ -6,6 +6,7 @@ import {
   DEFAULT_PLAYER_NAME,
   PLAYER_PROFILE_VERSION,
   PLAYER_PROFILE_VERSION_V1,
+  PLAYER_PROFILE_VERSION_V2,
   PROFILE_DOCUMENT_ID,
   checksumPlayerProfile,
   createEmptyInventory,
@@ -28,6 +29,7 @@ function sealedProfile(
     inventory: createEmptyInventory(),
     playTimeMs: 0,
     muted: DEFAULT_AUDIO_MUTED,
+    builds: [],
     visited: [],
     ...overrides,
   });
@@ -84,6 +86,7 @@ describe("checksum and seal", () => {
       inventory: createEmptyInventory(),
       playTimeMs: 1200,
       muted: false,
+      builds: ["thruster-coil-i"],
       visited: [
         {
           seed: "DEADBEEF",
@@ -127,6 +130,7 @@ describe("checksum and seal", () => {
     const empty = createEmptyPlayerProfile();
     expect(parsePlayerProfile(empty)).toEqual(empty);
     expect(empty.muted).toBe(false);
+    expect(empty.builds).toEqual([]);
     expect(DEFAULT_AUDIO_MUTED).toBe(false);
     for (const materialId of MATERIAL_ORDER) {
       expect(empty.inventory[materialId]).toBe(0);
@@ -143,6 +147,7 @@ describe("parsePlayerProfile", () => {
       inventory: createEmptyInventory(),
       playTimeMs: 5,
       muted: false,
+      builds: [],
       visited: [
         {
           seed: "000000AB",
@@ -171,6 +176,7 @@ describe("parsePlayerProfile", () => {
         inventory: createEmptyInventory(),
         playTimeMs: 5,
         muted: false,
+        builds: [],
         visited: [
           {
             seed: "000000AB",
@@ -199,7 +205,7 @@ describe("parsePlayerProfile", () => {
     ).toBeNull();
   });
 
-  it("upgrades valid v1 profiles to v2 with sound unmuted", () => {
+  it("upgrades valid v1 profiles to current with sound unmuted and empty builds", () => {
     const inventory = createEmptyInventory();
     inventory.carbon = 2;
     const v1Body = {
@@ -231,9 +237,50 @@ describe("parsePlayerProfile", () => {
     expect(parsed).not.toBeNull();
     expect(parsed?.v).toBe(PLAYER_PROFILE_VERSION);
     expect(parsed?.muted).toBe(false);
+    expect(parsed?.builds).toEqual([]);
     expect(parsed?.name).toBe("Legacy");
     expect(parsed?.inventory.carbon).toBe(2);
     expect(parsePlayerProfile(parsed)).toEqual(parsed);
+  });
+
+  it("upgrades valid v2 profiles to current with empty builds", () => {
+    const inventory = createEmptyInventory();
+    inventory.iron = 4;
+    const v2Body = {
+      v: PLAYER_PROFILE_VERSION_V2,
+      id: PROFILE_DOCUMENT_ID,
+      name: "Mid",
+      inventory,
+      playTimeMs: 900,
+      muted: true,
+      visited: [] as const,
+    };
+    const payload = JSON.stringify(v2Body);
+    let hash = 0x811c9dc5;
+    for (let index = 0; index < payload.length; index += 1) {
+      hash ^= payload.charCodeAt(index);
+      hash = Math.imul(hash, 0x01000193);
+    }
+    const checksum = (hash >>> 0).toString(16).toUpperCase().padStart(8, "0");
+
+    const parsed = parsePlayerProfile({ ...v2Body, checksum });
+    expect(parsed?.v).toBe(PLAYER_PROFILE_VERSION);
+    expect(parsed?.muted).toBe(true);
+    expect(parsed?.builds).toEqual([]);
+    expect(parsed?.inventory.iron).toBe(4);
+  });
+
+  it("rejects profiles missing builds or with unknown build ids", () => {
+    const sealed = sealedProfile({ name: "NoBuilds" });
+    const { builds: _ignored, ...withoutBuilds } = sealed;
+    expect(parsePlayerProfile(withoutBuilds)).toBeNull();
+    expect(
+      parsePlayerProfile({
+        ...sealed,
+        builds: ["not-a-build"],
+        checksum: sealed.checksum,
+      }),
+    ).toBeNull();
   });
 
   it("rejects v2 profiles missing a boolean muted flag", () => {

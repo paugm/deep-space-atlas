@@ -84,6 +84,7 @@ describe("builtin commands", () => {
     spawnRoverAhead: ReturnType<typeof vi.fn>;
     travelToSeed: ReturnType<typeof vi.fn>;
     toggleMute: ReturnType<typeof vi.fn>;
+    buildItem: ReturnType<typeof vi.fn>;
   } {
     const spawnSpaceshipAhead = vi.fn(async (_meters: number) => undefined);
     const spawnRoverAhead = vi.fn(
@@ -95,6 +96,15 @@ describe("builtin commands", () => {
       muted = !muted;
       return muted;
     });
+    const buildItem = vi.fn((token: string) => {
+      if (token === "thruster-coil-i") {
+        return { ok: true as const, label: "Thruster Coil I" };
+      }
+      if (token === "focus-lens-i") {
+        return { ok: false as const, reason: "already-owned" as const };
+      }
+      return { ok: false as const, reason: "unknown" as const };
+    });
     const host: CommandHost = {
       hasPlanetWorld: () => true,
       currentSeed: () => 0x11111111,
@@ -102,6 +112,7 @@ describe("builtin commands", () => {
       spawnRoverAhead,
       travelToSeed,
       toggleMute,
+      buildItem,
       ...overrides,
     };
     return {
@@ -110,6 +121,7 @@ describe("builtin commands", () => {
       spawnRoverAhead,
       travelToSeed,
       toggleMute,
+      buildItem,
     };
   }
 
@@ -227,5 +239,61 @@ describe("builtin commands", () => {
       message: "INCOMPLETE SIGNAL",
     });
     expect(toggleMute).toHaveBeenCalledTimes(2);
+  });
+
+  it("installs fabricator builds and rejects unknown or owned tokens", async () => {
+    const { host, buildItem } = createHost();
+    const registry = createCommandRegistry(createBuiltinCommands(host));
+
+    await expect(registry.dispatch("/build thruster-coil-i")).resolves.toEqual({
+      ok: true,
+      message: "INSTALLED · THRUSTER COIL I",
+    });
+    expect(buildItem).toHaveBeenCalledWith("thruster-coil-i");
+
+    await expect(registry.dispatch("/build focus-lens-i")).resolves.toEqual({
+      ok: false,
+      message: "ALREADY INSTALLED",
+    });
+    await expect(registry.dispatch("/build nope")).resolves.toEqual({
+      ok: false,
+      message: "UNKNOWN SCHEMATIC",
+    });
+    await expect(registry.dispatch("/build")).resolves.toEqual({
+      ok: false,
+      message: "INCOMPLETE SIGNAL",
+    });
+  });
+
+  it("installs the full fabricator loadout with /gimme everything", async () => {
+    const owned = new Set<string>();
+    const buildItem = vi.fn((token: string) => {
+      if (owned.has(token)) {
+        return { ok: false as const, reason: "already-owned" as const };
+      }
+      owned.add(token);
+      return { ok: true as const, label: token };
+    });
+    const { host } = createHost({ buildItem });
+    const registry = createCommandRegistry(createBuiltinCommands(host));
+
+    await expect(registry.dispatch("/gimme everything")).resolves.toEqual({
+      ok: true,
+      message: "FULL LOADOUT · 14 INSTALLED",
+    });
+    expect(buildItem).toHaveBeenCalledTimes(14);
+
+    await expect(registry.dispatch("/gimme everything")).resolves.toEqual({
+      ok: true,
+      message: "FULL LOADOUT ALREADY INSTALLED",
+    });
+    await expect(registry.dispatch("/gimme")).resolves.toEqual({
+      ok: false,
+      message: "INCOMPLETE SIGNAL",
+    });
+    await expect(registry.dispatch("/gimme stuff")).resolves.toEqual({
+      ok: false,
+      message: "INCOMPLETE SIGNAL",
+    });
   });
 });

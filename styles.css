@@ -550,8 +550,7 @@ button:active {
   box-shadow: 0 0 24px rgba(125, 240, 207, 0.45);
 }
 
-#btnNewGame,
-#invClose {
+#btnNewGame {
   color: var(--accent);
   background: transparent;
 }
@@ -618,6 +617,115 @@ button:active {
   font-size: 24px;
   letter-spacing: 0.3em;
 }
+
+.build-panel {
+  width: min(560px, 100%);
+  max-width: 560px;
+  max-height: min(86vh, 720px);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.build-panel::before,
+.build-panel::after {
+  content: none;
+}
+
+.build-intro {
+  margin: -8px 0 18px;
+  color: var(--dim);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  line-height: 1.55;
+}
+
+.build-section-title {
+  margin: 8px 0 10px;
+  color: var(--accent);
+  font-size: 10px;
+  letter-spacing: 0.28em;
+}
+
+.build-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+  min-width: 0;
+}
+
+.build-empty {
+  margin: 0 0 18px;
+  color: var(--dim);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+.build-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  background: rgba(125, 240, 207, 0.03);
+  text-align: left;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.build-card.locked {
+  opacity: 0.45;
+}
+
+.build-card.installed {
+  border-color: rgba(125, 240, 207, 0.35);
+}
+
+.build-card-main {
+  min-width: 0;
+}
+
+.build-card-label {
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.build-card-blurb {
+  margin-bottom: 6px;
+  color: var(--dim);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+}
+
+.build-card-meta {
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.build-card-meta.ready {
+  color: var(--accent);
+}
+
+.build-card button {
+  align-self: center;
+  padding: 8px 12px;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+}
+
+#buildClose,
+#invClose {
+  color: var(--accent);
+  background: transparent;
+}
+
 
 .profile-panel {
   width: min(440px, calc(100vw - 48px));

@@ -90,24 +90,32 @@ export function isValidCaveBrush(brush: CaveBrush): boolean {
 export function createDirectionalCaveBrush(
   hit: CavePoint,
   direction: CavePoint,
+  options: {
+    radius?: number;
+    length?: number;
+    backtrack?: number;
+  } = {},
 ): CaveBrush {
   const length = Math.hypot(direction.x, direction.y, direction.z);
   const inverseLength = length > 1e-8 ? 1 / length : 0;
   const x = direction.x * inverseLength;
   const y = direction.y * inverseLength;
   const z = direction.z * inverseLength;
+  const digLength = options.length ?? CAVE_DIG_LENGTH;
+  const digBacktrack = options.backtrack ?? CAVE_DIG_BACKTRACK;
+  const digRadius = options.radius ?? CAVE_DIG_RADIUS;
   return {
     start: {
-      x: hit.x - x * CAVE_DIG_BACKTRACK,
-      y: hit.y - y * CAVE_DIG_BACKTRACK,
-      z: hit.z - z * CAVE_DIG_BACKTRACK,
+      x: hit.x - x * digBacktrack,
+      y: hit.y - y * digBacktrack,
+      z: hit.z - z * digBacktrack,
     },
     end: {
-      x: hit.x + x * CAVE_DIG_LENGTH,
-      y: hit.y + y * CAVE_DIG_LENGTH,
-      z: hit.z + z * CAVE_DIG_LENGTH,
+      x: hit.x + x * digLength,
+      y: hit.y + y * digLength,
+      z: hit.z + z * digLength,
     },
-    radius: CAVE_DIG_RADIUS,
+    radius: digRadius,
   };
 }
 

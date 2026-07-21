@@ -8,6 +8,11 @@ import type { AimHit, World, WorldSystem } from "./world.ts";
 import * as THREE from "three";
 
 import { Sound } from "./audio.ts";
+import type { BuildId, BuildModifiers, TryBuildReason } from "./builds.ts";
+import {
+  resolveBuildModifiers,
+  tryBuild,
+} from "./builds.ts";
 import {
   type SolidCollider,
   resolveCapsuleAgainstSolids,
@@ -19,22 +24,14 @@ import {
   GRAVITY,
   HALF_WORLD,
   JET_ACCELERATION,
-  JET_BURN_SECONDS,
-  JET_MAX_VERTICAL_SPEED,
-  JET_RECHARGE_SECONDS,
-  JUMP_VELOCITY,
   MATERIAL_ORDER,
   MATERIALS,
-  MINING_TIME,
   PLAYER_COLLISION_QUERY_RADIUS,
   PLAYER_RADIUS,
   ROCK_COLLIDER_RADIUS_FACTOR,
-  SPRINT_SPEED,
-  WALK_SPEED,
+  ROVER_DRIVE_SPEED,
   WATER_DEPTH_FOR_FULL_FOG,
   WATER_GRAVITY_FACTOR,
-  WATER_MOVE_FACTOR,
-  WATER_VERTICAL_DRAG,
   clamp,
   lerp,
 } from "./config.ts";
@@ -49,6 +46,7 @@ import type { PlanetEntity } from "./planet-save.ts";
 import type { RoverKindId } from "./vehicles/kinds.ts";
 import { createRadialTexture } from "./world.ts";
 import type { CaveBrush } from "./world/caves.ts";
+import { cloneInventory } from "./player-profile.ts";
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -91,7 +89,18 @@ export interface Gameplay {
   }): void;
   /** Updates cargo without notifying UI. */
   loadInventory(next: Inventory): void;
+  /** Updates installed builds and refreshes modifiers. */
+  loadBuilds(next: readonly BuildId[]): void;
+  /**
+   * Install a fabricator build. Menu builds spend cargo; `free` skips cost
+   * (slash command). Returns false when the install is rejected.
+   */
+  attemptBuild(
+    buildId: string,
+    options?: { free?: boolean },
+  ): { ok: true; label: string } | { ok: false; reason: TryBuildReason };
   toggleInventory(): void;
+  toggleBuildMenu(): void;
   toggleProfile(): void;
   toggleCommandBar(): void;
   closeCommandBar(): void;
@@ -154,6 +163,7 @@ export interface GameplayDependencies {
   ) => void;
   onPetChanged?: (entity: PlanetEntity) => void;
   onInventoryChanged?: (inventory: Inventory) => void;
+  onBuildsChanged?: (builds: readonly BuildId[]) => void;
   onProfileOpen?: () => void;
 }
 
@@ -173,6 +183,7 @@ export function createGameplay({
   onDepositChanged,
   onPetChanged,
   onInventoryChanged,
+  onBuildsChanged,
   onProfileOpen,
 }: GameplayDependencies): Gameplay {
   const player: PlayerState = {
@@ -200,11 +211,14 @@ export function createGameplay({
     copper: 0,
     crystal: 0,
   };
+  let builds: BuildId[] = [];
+  let modifiers: BuildModifiers = resolveBuildModifiers(builds);
   const keys: KeyboardState = {};
 
   let active = true;
   let locked = false;
   let inventoryOpen = false;
+  let buildMenuOpen = false;
   let profileOpen = false;
   let commandBarOpen = false;
   let started = false;
@@ -307,6 +321,7 @@ export function createGameplay({
 
     started = false;
     inventoryOpen = false;
+    buildMenuOpen = false;
     profileOpen = false;
     commandBarOpen = false;
     miningProgress = 0;
@@ -316,6 +331,7 @@ export function createGameplay({
     ui.setTargetLabel("");
     ui.setFuel(1);
     ui.setInventoryVisible(false);
+    ui.setBuildMenuVisible(false);
     ui.setProfileVisible(false);
     ui.setCommandBarVisible(false);
     ui.updateInventoryViews(inventory);
@@ -347,15 +363,49 @@ export function createGameplay({
     ui.updateInventoryViews(inventory);
   }
 
+  function loadBuilds(next: readonly BuildId[]): void {
+    builds = [...next];
+    modifiers = resolveBuildModifiers(builds);
+  }
+
+  function refreshBuildMenu(): void {
+    ui.updateBuildMenu({
+      inventory: cloneInventory(inventory),
+      builds,
+    });
+  }
+
+  function attemptBuild(
+    buildId: string,
+    options: { free?: boolean } = {},
+  ): { ok: true; label: string } | { ok: false; reason: TryBuildReason } {
+    const result = tryBuild(buildId, inventory, builds, options);
+    if (!result.ok) {
+      return { ok: false, reason: result.reason };
+    }
+    for (const materialId of MATERIAL_ORDER) {
+      inventory[materialId] = result.inventory[materialId];
+    }
+    builds = result.builds;
+    modifiers = resolveBuildModifiers(builds);
+    ui.updateInventoryViews(inventory);
+    onInventoryChanged?.(cloneInventory(inventory));
+    onBuildsChanged?.(builds);
+    if (buildMenuOpen) refreshBuildMenu();
+    return { ok: true, label: result.definition.label };
+  }
+
   function anyOverlayOpen(): boolean {
-    return inventoryOpen || profileOpen || commandBarOpen;
+    return inventoryOpen || buildMenuOpen || profileOpen || commandBarOpen;
   }
 
   function closeOverlays(): void {
     inventoryOpen = false;
+    buildMenuOpen = false;
     profileOpen = false;
     commandBarOpen = false;
     ui.setInventoryVisible(false);
+    ui.setBuildMenuVisible(false);
     ui.setProfileVisible(false);
     ui.setCommandBarVisible(false);
   }
@@ -382,12 +432,12 @@ export function createGameplay({
   }
 
   /**
-   * Open one overlay (or none). Mutually exclusive with inventory / profile /
-   * command bar. Opening exits pointer lock. Closing either re-locks (resume)
-   * or leaves the player on the Standby / start overlay.
+   * Open one overlay (or none). Mutually exclusive with inventory / build /
+   * profile / command bar. Opening exits pointer lock. Closing with resume
+   * re-locks; Escape closes to Standby without re-locking.
    */
   function setOverlay(
-    next: "none" | "inventory" | "profile" | "command",
+    next: "none" | "inventory" | "build" | "profile" | "command",
     options: { resume?: boolean } = {},
   ): void {
     const wasOpen = anyOverlayOpen();
@@ -395,13 +445,16 @@ export function createGameplay({
     const willOpen = next !== "none";
 
     inventoryOpen = next === "inventory";
+    buildMenuOpen = next === "build";
     profileOpen = next === "profile";
     commandBarOpen = next === "command";
 
     if (inventoryOpen) ui.updateInventory(inventory);
+    if (buildMenuOpen) refreshBuildMenu();
     if (profileOpen) onProfileOpen?.();
 
     ui.setInventoryVisible(inventoryOpen);
+    ui.setBuildMenuVisible(buildMenuOpen);
     ui.setProfileVisible(profileOpen);
     ui.setCommandBarVisible(commandBarOpen);
 
@@ -423,6 +476,11 @@ export function createGameplay({
   function toggleInventory(): void {
     if (!started) return;
     setOverlay(inventoryOpen ? "none" : "inventory");
+  }
+
+  function toggleBuildMenu(): void {
+    if (!started) return;
+    setOverlay(buildMenuOpen ? "none" : "build");
   }
 
   function toggleProfile(): void {
@@ -523,14 +581,18 @@ export function createGameplay({
       localZ < 0 &&
       !inWater;
     const terrainSpeed = inWater
-      ? WATER_MOVE_FACTOR
+      ? modifiers.waterMoveFactor
       : world.walkSpeedFactor;
+    const mountSpeed =
+      mount === null
+        ? 0
+        : mount.speed * (modifiers.roverDriveSpeed / ROVER_DRIVE_SPEED);
     const speed =
       mount !== null
-        ? mount.speed * (inWater ? WATER_MOVE_FACTOR : 1)
+        ? mountSpeed * (inWater ? modifiers.waterMoveFactor : 1)
         : wantsSprint
-          ? SPRINT_SPEED * world.walkSpeedFactor
-          : WALK_SPEED * terrainSpeed;
+          ? modifiers.sprintSpeed * world.walkSpeedFactor
+          : modifiers.walkSpeed * terrainSpeed;
     const inputLength = Math.hypot(localX, localZ);
     let targetX = 0;
     let targetZ = 0;
@@ -566,23 +628,23 @@ export function createGameplay({
       const gravity = GRAVITY * (inWater ? WATER_GRAVITY_FACTOR : 1);
       player.velocity.y -= gravity * deltaTime;
       if (inWater) {
-        const drag = 1 - Math.exp(-WATER_VERTICAL_DRAG * deltaTime);
+        const drag = 1 - Math.exp(-modifiers.waterVerticalDrag * deltaTime);
         player.velocity.y = lerp(player.velocity.y, 0, drag);
       }
 
       if (player.grounded && keys.Space) {
-        player.velocity.y = JUMP_VELOCITY * (inWater ? 0.65 : 1);
+        player.velocity.y = modifiers.jumpVelocity * (inWater ? 0.65 : 1);
         player.grounded = false;
       }
 
       if (!player.grounded && keys.Space && player.fuel > 0) {
         player.velocity.y = Math.min(
           player.velocity.y + JET_ACCELERATION * deltaTime,
-          JET_MAX_VERTICAL_SPEED,
+          modifiers.jetMaxVerticalSpeed,
         );
         player.fuel = Math.max(
           0,
-          player.fuel - deltaTime / JET_BURN_SECONDS,
+          player.fuel - deltaTime / modifiers.jetBurnSeconds,
         );
         Sound.jetOn();
       } else {
@@ -590,7 +652,7 @@ export function createGameplay({
         if (player.grounded) {
           player.fuel = Math.min(
             1,
-            player.fuel + deltaTime / JET_RECHARGE_SECONDS,
+            player.fuel + deltaTime / modifiers.jetRechargeSeconds,
           );
         }
       }
@@ -734,7 +796,7 @@ export function createGameplay({
       mount === null && player.grounded
         ? Math.sin(player.bobPhase) *
           0.05 *
-          Math.min(horizontalSpeed / WALK_SPEED, 1)
+          Math.min(horizontalSpeed / modifiers.walkSpeed, 1)
         : 0;
     camera.position.set(
       player.position.x,
@@ -835,7 +897,10 @@ export function createGameplay({
     switch (hit.kind) {
       case "deposit": {
         const entry = requireDepositEntry(hit.type, hit.index);
-        const amount = Math.min(2, entry.remaining);
+        const amount = Math.min(
+          2 + modifiers.depositYieldBonus,
+          entry.remaining,
+        );
         entry.remaining -= amount;
         worldSystem.refreshDeposit(hit.type, hit.index);
         onDepositChanged?.(hit.type, hit.index, entry.remaining);
@@ -856,7 +921,10 @@ export function createGameplay({
         return;
       case "terrain": {
         camera.getWorldDirection(vector1);
-        const brush = worldSystem.carveCave(hit.point, vector1);
+        const brush = worldSystem.carveCave(hit.point, vector1, {
+          radius: modifiers.digRadius,
+          length: modifiers.digLength,
+        });
         if (brush === null) return;
         addResource("silicate", 2);
         onCaveCarved?.(brush);
@@ -971,7 +1039,9 @@ export function createGameplay({
       return;
     }
     const hit =
-      locked && started ? worldSystem.getAimHit(camera) : null;
+      locked && started
+        ? worldSystem.getAimHit(camera, modifiers.miningRange)
+        : null;
     if (hit === null) {
       ui.setTargetLabel("");
       hideMiningEffects();
@@ -1026,7 +1096,7 @@ export function createGameplay({
       return;
     }
 
-    miningProgress += deltaTime / MINING_TIME;
+    miningProgress += deltaTime / modifiers.miningTime;
     Sound.humOn();
     Sound.setHumProgress(Math.min(miningProgress, 1));
 
@@ -1134,13 +1204,14 @@ export function createGameplay({
     if (event.target instanceof HTMLInputElement) {
       if (event.code === "Escape" && anyOverlayOpen() && !event.repeat) {
         if (commandBarOpen) dismissCommandBar();
-        else setOverlay("none");
+        else setOverlay("none", { resume: false });
       }
       return;
     }
     if (event.code === "Space") event.preventDefault();
     keys[event.code] = true;
     if (event.code === "KeyI" && !event.repeat) toggleInventory();
+    if (event.code === "KeyB" && !event.repeat) toggleBuildMenu();
     if (event.code === "KeyP" && !event.repeat) toggleProfile();
     if (event.code === "Enter" && !event.repeat) {
       event.preventDefault();
@@ -1148,7 +1219,7 @@ export function createGameplay({
     }
     if (event.code === "Escape" && anyOverlayOpen()) {
       if (commandBarOpen) dismissCommandBar();
-      else setOverlay("none");
+      else setOverlay("none", { resume: false });
     }
   }
 
@@ -1227,7 +1298,10 @@ export function createGameplay({
     resetWorld,
     applySavedPose,
     loadInventory,
+    loadBuilds,
+    attemptBuild,
     toggleInventory,
+    toggleBuildMenu,
     toggleProfile,
     toggleCommandBar,
     closeCommandBar,

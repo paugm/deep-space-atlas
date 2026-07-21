@@ -340,11 +340,12 @@ export function createWorldSystem(
   function carveCave(
     point: { x: number; y: number; z: number },
     direction: { x: number; y: number; z: number },
+    options: { radius?: number; length?: number } = {},
   ) {
     const caves = requireWorld().caves;
     if (caves === null) return null;
     const brush = snapCaveBrushToSurface(
-      createDirectionalCaveBrush(point, direction),
+      createDirectionalCaveBrush(point, direction, options),
       requireWorld().heightAt,
     );
     if (!caves.addBrush(brush)) return null;
@@ -359,12 +360,13 @@ export function createWorldSystem(
     return world?.caves?.update(viewPosition) ?? [];
   }
 
-  function getAimHit(camera: THREE.Camera) {
+  function getAimHit(camera: THREE.Camera, range?: number) {
     return resolveAimHit(
       requireWorld(),
       camera,
       raycaster,
       screenCenter,
+      range,
     );
   }
 

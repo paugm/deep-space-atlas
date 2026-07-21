@@ -1,10 +1,12 @@
 /**
- * Global player profile: callsign, cargo, playtime, mute preference, and
- * visited-planet index. Lives in the shared IndexedDB next to per-planet rows
- * and not inside planet patches. Pets stay planet-bound; visited entries only
- * cache hasPet for UI.
+ * Global player profile: callsign, cargo, playtime, mute preference, installed
+ * fabricator builds, and visited-planet index. Lives in the shared IndexedDB
+ * next to per-planet rows and not inside planet patches. Pets stay
+ * planet-bound; visited entries only cache hasPet for UI.
  */
 
+import type { BuildId } from "./builds.ts";
+import { cloneBuilds, isBuildId } from "./builds.ts";
 import type { Inventory } from "./config.ts";
 import { MATERIAL_ORDER } from "./config.ts";
 import {
@@ -13,9 +15,11 @@ import {
   openSaveDb,
 } from "./save-db.ts";
 
-export const PLAYER_PROFILE_VERSION = 2;
+export const PLAYER_PROFILE_VERSION = 3;
 /** Profiles sealed before mute preference was stored. */
 export const PLAYER_PROFILE_VERSION_V1 = 1;
+/** Profiles sealed before fabricator builds were stored. */
+export const PLAYER_PROFILE_VERSION_V2 = 2;
 export const PROFILE_DOCUMENT_ID = "player";
 export const DEFAULT_PLAYER_NAME = "Explorer";
 export const MAX_PLAYER_NAME_LENGTH = 24;
@@ -42,6 +46,8 @@ export interface PlayerProfile {
   playTimeMs: number;
   /** Master audio mute; false means sound is active. */
   muted: boolean;
+  /** Permanently installed fabricator builds (profile-wide). */
+  builds: BuildId[];
   visited: VisitedPlanet[];
   checksum: string;
 }
@@ -51,6 +57,7 @@ export interface ProfileView {
   playTimeMs: number;
   inventory: Inventory;
   muted: boolean;
+  builds: readonly BuildId[];
   visited: readonly VisitedPlanet[];
 }
 
@@ -68,6 +75,7 @@ export interface ProfileSession {
   adopt(profile: PlayerProfile): void;
   setName(name: string): void;
   setInventory(inventory: Inventory): void;
+  setBuilds(builds: readonly BuildId[]): void;
   setMuted(muted: boolean): void;
   addPlayTime(deltaMs: number): void;
   recordVisit(seed: string, name: string, hasPet: boolean): void;
@@ -182,6 +190,18 @@ function parseVisitedList(raw: unknown): VisitedPlanet[] | null {
   return visited;
 }
 
+function parseBuilds(raw: unknown): BuildId[] | null {
+  if (!Array.isArray(raw)) return null;
+  const builds: BuildId[] = [];
+  const seen = new Set<BuildId>();
+  for (const entry of raw) {
+    if (!isBuildId(entry) || seen.has(entry)) return null;
+    seen.add(entry);
+    builds.push(entry);
+  }
+  return builds;
+}
+
 function fnv1aHex(payload: string): string {
   let hash = 0x811c9dc5;
   for (let index = 0; index < payload.length; index += 1) {
@@ -209,6 +229,7 @@ export function sealPlayerProfile(
     inventory: cloneInventory(document.inventory),
     playTimeMs: Math.max(0, Math.floor(document.playTimeMs)),
     muted: document.muted === true,
+    builds: cloneBuilds(document.builds ?? []),
     visited: document.visited.map((entry) => ({ ...entry })),
     checksum: "",
   };
@@ -224,6 +245,7 @@ export function createEmptyPlayerProfile(): PlayerProfile {
     inventory: createEmptyInventory(),
     playTimeMs: 0,
     muted: DEFAULT_AUDIO_MUTED,
+    builds: [],
     visited: [],
   });
 }
@@ -235,6 +257,19 @@ function checksumPlayerProfileV1(document: {
   name: string;
   inventory: Inventory;
   playTimeMs: number;
+  visited: VisitedPlanet[];
+}): string {
+  return fnv1aHex(JSON.stringify(document));
+}
+
+/** Checksum body for legacy v2 profiles (no builds field). */
+function checksumPlayerProfileV2(document: {
+  v: number;
+  id: string;
+  name: string;
+  inventory: Inventory;
+  playTimeMs: number;
+  muted: boolean;
   visited: VisitedPlanet[];
 }): string {
   return fnv1aHex(JSON.stringify(document));
@@ -267,7 +302,7 @@ export function parsePlayerProfile(raw: unknown): PlayerProfile | null {
       visited,
     });
     if (expected !== raw.checksum) return null;
-    // Upgrade in memory; next flush seals as v2 with muted default (sound on).
+    // Upgrade in memory; next flush seals as current with muted + empty builds.
     return sealPlayerProfile({
       v: PLAYER_PROFILE_VERSION,
       id: PROFILE_DOCUMENT_ID,
@@ -275,12 +310,39 @@ export function parsePlayerProfile(raw: unknown): PlayerProfile | null {
       inventory,
       playTimeMs,
       muted: DEFAULT_AUDIO_MUTED,
+      builds: [],
+      visited,
+    });
+  }
+
+  if (raw.v === PLAYER_PROFILE_VERSION_V2) {
+    if (typeof raw.muted !== "boolean") return null;
+    const expected = checksumPlayerProfileV2({
+      v: PLAYER_PROFILE_VERSION_V2,
+      id: PROFILE_DOCUMENT_ID,
+      name,
+      inventory,
+      playTimeMs,
+      muted: raw.muted,
+      visited,
+    });
+    if (expected !== raw.checksum) return null;
+    return sealPlayerProfile({
+      v: PLAYER_PROFILE_VERSION,
+      id: PROFILE_DOCUMENT_ID,
+      name,
+      inventory,
+      playTimeMs,
+      muted: raw.muted,
+      builds: [],
       visited,
     });
   }
 
   if (raw.v !== PLAYER_PROFILE_VERSION) return null;
   if (typeof raw.muted !== "boolean") return null;
+  const builds = parseBuilds(raw.builds);
+  if (builds === null) return null;
 
   const candidate: PlayerProfile = {
     v: PLAYER_PROFILE_VERSION,
@@ -289,6 +351,7 @@ export function parsePlayerProfile(raw: unknown): PlayerProfile | null {
     inventory,
     playTimeMs,
     muted: raw.muted,
+    builds,
     visited,
     checksum: raw.checksum,
   };
@@ -300,6 +363,7 @@ export function parsePlayerProfile(raw: unknown): PlayerProfile | null {
     inventory: candidate.inventory,
     playTimeMs: candidate.playTimeMs,
     muted: candidate.muted,
+    builds: candidate.builds,
     visited: candidate.visited,
   });
   if (expected !== raw.checksum) return null;
@@ -444,6 +508,7 @@ export function createProfileSession(options: {
       playTimeMs: active.playTimeMs,
       inventory: cloneInventory(active.inventory),
       muted: active.muted,
+      builds: cloneBuilds(active.builds),
       visited: active.visited.map((entry) => ({ ...entry })),
     };
   }
@@ -474,6 +539,18 @@ export function createProfileSession(options: {
       ...active,
       inventory: cloneInventory(inventory),
     };
+    scheduleSave();
+  }
+
+  function setBuilds(builds: readonly BuildId[]): void {
+    const next = cloneBuilds(builds);
+    if (
+      next.length === active.builds.length &&
+      next.every((id, index) => id === active.builds[index])
+    ) {
+      return;
+    }
+    active = { ...active, builds: next };
     scheduleSave();
   }
 
@@ -536,6 +613,7 @@ export function createProfileSession(options: {
     adopt,
     setName,
     setInventory,
+    setBuilds,
     setMuted,
     addPlayTime,
     recordVisit,
