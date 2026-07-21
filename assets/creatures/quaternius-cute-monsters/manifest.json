@@ -1,0 +1,236 @@
+[
+  {
+    "id": "alien",
+    "sourceName": "Alien",
+    "file": "alien.glb",
+    "animations": [
+      "Bite_Front",
+      "Bite_InPlace",
+      "Dance",
+      "Death",
+      "HitRecieve",
+      "Idle",
+      "Jump",
+      "No",
+      "Walk",
+      "Yes"
+    ],
+    "bytes": 318288
+  },
+  {
+    "id": "alien-tall",
+    "sourceName": "Alien_Tall",
+    "file": "alien-tall.glb",
+    "animations": [
+      "Bite_Front",
+      "Bite_InPlace",
+      "Dance",
+      "Death",
+      "HitRecieve",
+      "Idle",
+      "Jump",
+      "No",
+      "Walk",
+      "Yes"
+    ],
+    "bytes": 286464
+  },
+  {
+    "id": "cactus",
+    "sourceName": "Cactus",
+    "file": "cactus.glb",
+    "animations": [
+      "Bite_Front",
+      "Bite_InPlace",
+      "Dance",
+      "Death",
+      "HitRecieve",
+      "Idle",
+      "Jump",
+      "No",
+      "Walk",
+      "Yes"
+    ],
+    "bytes": 326524
+  },
+  {
+    "id": "crab",
+    "sourceName": "Crab",
+    "file": "crab.glb",
+    "animations": [
+      "Bite_Front",
+      "Bite_InPlace",
+      "Dance",
+      "Death",
+      "HitRecieve",
+      "Idle",
+      "Jump",
+      "No",
+      "Walk",
+      "Yes"
+    ],
+    "bytes": 320008
+  },
+  {
+    "id": "cyclops",
+    "sourceName": "Cyclops",
+    "file": "cyclops.glb",
+    "animations": [
+      "Bite_Front",
+      "Bite_InPlace",
+      "Dance",
+      "Death",
+      "HitRecieve",
+      "Idle",
+      "Jump",
+      "No",
+      "Walk",
+      "Yes"
+    ],
+    "bytes": 319136
+  },
+  {
+    "id": "deer",
+    "sourceName": "Deer",
+    "file": "deer.glb",
+    "animations": [
+      "Bite_Front",
+      "Bite_InPlace",
+      "Dance",
+      "Death",
+      "HitRecieve",
+      "Idle",
+      "Jump",
+      "No",
+      "Walk",
+      "Yes"
+    ],
+    "bytes": 321376
+  },
+  {
+    "id": "demon",
+    "sourceName": "Demon",
+    "file": "demon.glb",
+    "animations": [
+      "Bite_Front",
+      "Bite_InPlace",
+      "Dance",
+      "Death",
+      "HitRecieve",
+      "Idle",
+      "Jump",
+      "No",
+      "Walk",
+      "Yes"
+    ],
+    "bytes": 326992
+  },
+  {
+    "id": "ghost",
+    "sourceName": "Ghost",
+    "file": "ghost.glb",
+    "animations": [
+      "Bite_Front",
+      "Bite_InPlace",
+      "Dance",
+      "Death",
+      "HitRecieve",
+      "Idle",
+      "Jump",
+      "No",
+      "Walk",
+      "Yes"
+    ],
+    "bytes": 233876
+  },
+  {
+    "id": "green-demon",
+    "sourceName": "GreenDemon",
+    "file": "green-demon.glb",
+    "animations": [
+      "Bite_Front",
+      "Bite_InPlace",
+      "Dance",
+      "Death",
+      "HitRecieve",
+      "Idle",
+      "Jump",
+      "No",
+      "Walk",
+      "Yes"
+    ],
+    "bytes": 315764
+  },
+  {
+    "id": "panda",
+    "sourceName": "Panda",
+    "file": "panda.glb",
+    "animations": [
+      "Bite_Front",
+      "Bite_InPlace",
+      "Dance",
+      "Death",
+      "HitRecieve",
+      "Idle",
+      "Jump",
+      "No",
+      "Walk",
+      "Yes"
+    ],
+    "bytes": 282360
+  },
+  {
+    "id": "skull",
+    "sourceName": "Skull",
+    "file": "skull.glb",
+    "animations": [
+      "Bite_Front",
+      "Bite_InPlace",
+      "Dance",
+      "Death",
+      "HitRecieve",
+      "Idle",
+      "Jump",
+      "No",
+      "Walk",
+      "Yes"
+    ],
+    "bytes": 345196
+  },
+  {
+    "id": "tree",
+    "sourceName": "Tree",
+    "file": "tree.glb",
+    "animations": [
+      "Bite_Front",
+      "Bite_InPlace",
+      "Dance",
+      "Death",
+      "HitRecieve",
+      "Idle",
+      "Jump",
+      "No",
+      "Walk",
+      "Yes"
+    ],
+    "bytes": 361160
+  },
+  {
+    "id": "yeti",
+    "sourceName": "Yeti",
+    "file": "yeti.glb",
+    "animations": [
+      "Bite_Front",
+      "Bite_InPlace",
+      "Dance",
+      "Death",
+      "HitRecieve",
+      "Idle",
+      "Jump",
+      "No",
+      "Walk",
+      "Yes"
+    ],
+    "bytes": 284540
+  }
+]

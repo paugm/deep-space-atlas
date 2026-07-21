@@ -1,0 +1,23 @@
+[
+  {
+    "id": "rover",
+    "sourceName": "Rover",
+    "polyPizza": "https://poly.pizza/m/tzOLXetacM",
+    "file": "rover.glb",
+    "bytes": 331288
+  },
+  {
+    "id": "round-rover",
+    "sourceName": "Round Rover",
+    "polyPizza": "https://poly.pizza/m/ejdkcNgMpr",
+    "file": "round-rover.glb",
+    "bytes": 306996
+  },
+  {
+    "id": "rover-variant",
+    "sourceName": "Rover",
+    "polyPizza": "https://poly.pizza/m/WRd1piJOfh",
+    "file": "rover-variant.glb",
+    "bytes": 361576
+  }
+]

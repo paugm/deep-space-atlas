@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="220" viewBox="0 0 720 220" role="img" aria-labelledby="title desc">
+  <title id="title">Deep Space Atlas orbital scan</title>
+  <desc id="desc">CRT-style orbital scanner with a centered radar sweep and a locked planetary body</desc>
+  <defs>
+    <radialGradient id="crtGlow" cx="50%" cy="48%" r="55%">
+      <stop offset="0%" stop-color="#0d2a22"/>
+      <stop offset="70%" stop-color="#071410"/>
+      <stop offset="100%" stop-color="#030806"/>
+    </radialGradient>
+    <radialGradient id="planetBody" cx="38%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#9dffc9"/>
+      <stop offset="45%" stop-color="#2a8f6a"/>
+      <stop offset="100%" stop-color="#0a2e24"/>
+    </radialGradient>
+    <clipPath id="screen">
+      <rect x="18" y="18" width="684" height="184" rx="10"/>
+    </clipPath>
+    <style>
+      .label { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #7cffb2; }
+      .dim { fill: #3d7a62; }
+      .bright { fill: #c8ffe0; }
+    </style>
+  </defs>
+
+  <!-- Bezel -->
+  <rect width="720" height="220" rx="16" fill="#101814"/>
+  <rect x="8" y="8" width="704" height="204" rx="12" fill="#1a2c24" stroke="#3d7a62" stroke-width="2"/>
+  <rect x="18" y="18" width="684" height="184" rx="10" fill="url(#crtGlow)" stroke="#2f5f4c" stroke-width="1.5"/>
+
+  <g clip-path="url(#screen)">
+    <!-- Starfield -->
+    <g fill="#7cffb2">
+      <circle cx="56" cy="42" r="1.2"/>
+      <circle cx="110" cy="78" r="1"/>
+      <circle cx="168" cy="36" r="1.4"/>
+      <circle cx="220" cy="150" r="1"/>
+      <circle cx="280" cy="58" r="1.1"/>
+      <circle cx="470" cy="44" r="1.3"/>
+      <circle cx="520" cy="128" r="1"/>
+      <circle cx="580" cy="52" r="1.5"/>
+      <circle cx="640" cy="160" r="1.1"/>
+      <circle cx="680" cy="70" r="1"/>
+      <circle cx="90" cy="170" r="1.2"/>
+      <circle cx="420" cy="170" r="1"/>
+    </g>
+
+    <!-- Radar rings -->
+    <g fill="none" stroke="#3d7a62" stroke-width="1" opacity="0.7">
+      <circle cx="360" cy="110" r="28"/>
+      <circle cx="360" cy="110" r="52"/>
+      <circle cx="360" cy="110" r="76"/>
+      <circle cx="360" cy="110" r="98" stroke="#7cffb2" stroke-opacity="0.45"/>
+    </g>
+    <line x1="360" y1="12" x2="360" y2="208" stroke="#2f5f4c" stroke-width="1" opacity="0.5"/>
+    <line x1="230" y1="110" x2="490" y2="110" stroke="#2f5f4c" stroke-width="1" opacity="0.5"/>
+
+    <!-- A single SMIL transform keeps the sweep pinned to the radar centre. -->
+    <g>
+      <animateTransform attributeName="transform" type="rotate" values="42 360 110;402 360 110" dur="6s" repeatCount="indefinite"/>
+      <path d="M360 110 L360 14 A96 96 0 0 1 454 148 Z" fill="#7cffb2" fill-opacity="0.12"/>
+      <line x1="360" y1="110" x2="360" y2="14" stroke="#c8ffe0" stroke-width="1.5" stroke-opacity="0.85"/>
+    </g>
+
+    <!-- Planet -->
+    <circle cx="360" cy="110" r="34" fill="url(#planetBody)" stroke="#9dffc9" stroke-width="1.5"/>
+    <path d="M338 98 Q360 88 382 100 Q370 112 348 108 Z" fill="#0a2e24" opacity="0.35"/>
+    <path d="M340 122 Q355 132 378 124 Q366 136 342 130 Z" fill="#0a2e24" opacity="0.28"/>
+    <ellipse cx="348" cy="100" rx="8" ry="5" fill="#c8ffe0" opacity="0.25"/>
+
+    <!-- Contact blips -->
+    <circle cx="420" cy="72" r="3" fill="#c8ffe0"/>
+    <circle cx="318" cy="148" r="2.5" fill="#7cffb2"/>
+    <circle cx="402" cy="146" r="2" fill="#9dffc9"/>
+
+    <!-- Fine scanlines -->
+    <g stroke="#7cffb2" stroke-opacity="0.04" stroke-width="1">
+      <line x1="18" y1="40" x2="702" y2="40"/>
+      <line x1="18" y1="52" x2="702" y2="52"/>
+      <line x1="18" y1="64" x2="702" y2="64"/>
+      <line x1="18" y1="76" x2="702" y2="76"/>
+      <line x1="18" y1="88" x2="702" y2="88"/>
+      <line x1="18" y1="100" x2="702" y2="100"/>
+      <line x1="18" y1="112" x2="702" y2="112"/>
+      <line x1="18" y1="124" x2="702" y2="124"/>
+      <line x1="18" y1="136" x2="702" y2="136"/>
+      <line x1="18" y1="148" x2="702" y2="148"/>
+      <line x1="18" y1="160" x2="702" y2="160"/>
+      <line x1="18" y1="172" x2="702" y2="172"/>
+      <line x1="18" y1="184" x2="702" y2="184"/>
+    </g>
+  </g>
+
+  <!-- HUD chrome -->
+  <text class="label dim" x="34" y="40" font-size="11">SCANNER // ORBITAL</text>
+  <text class="label bright" x="34" y="56" font-size="11">LOCK: PLANETARY BODY</text>
+  <text class="label dim" x="560" y="40" font-size="11">FREQ 7.4 GHz</text>
+  <text class="label" x="560" y="56" font-size="11">SWEEP ACTIVE</text>
+  <text class="label" x="658" y="56" font-size="11" fill="#7cffb2">_
+    <animate attributeName="opacity" values="1;0;1" dur="1.2s" repeatCount="indefinite"/>
+  </text>
+  <text class="label dim" x="34" y="188" font-size="11">CRT PIPELINE ONLINE</text>
+  <text class="label" x="520" y="188" font-size="11">SEED 0xA3F19C02</text>
+</svg>

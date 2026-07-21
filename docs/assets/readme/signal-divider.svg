@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="28" viewBox="0 0 560 28" role="img" aria-label="Signal divider">
+  <defs>
+    <style>
+      .bar { fill: #3d7a62; }
+      .core { fill: #7cffb2; animation: pulse 1.8s ease-in-out infinite; }
+      .dot { fill: #7cffb2; animation: blink 1s steps(2, end) infinite; }
+      @keyframes pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+      @keyframes blink { 50% { opacity: 0.2; } }
+    </style>
+  </defs>
+  <rect class="bar" x="8" y="13" width="200" height="2" rx="1"/>
+  <rect class="bar" x="352" y="13" width="200" height="2" rx="1"/>
+  <circle class="core" cx="280" cy="14" r="5"/>
+  <circle class="dot" cx="262" cy="14" r="2"/>
+  <circle class="dot" cx="298" cy="14" r="2"/>
+  <text x="220" y="18" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="9" fill="#3d7a62">Æ</text>
+  <text x="332" y="18" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="9" fill="#3d7a62">Æ</text>
+</svg>

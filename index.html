@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Deep Space Atlas, a procedural first-person mining and exploration game."
+    />
+    <title>Deep Space Atlas: Procedural Survey</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230b1218'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%237df0cf' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='%237df0cf'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <!-- Planet rover drive: simple chassis / canopy chrome (CSS only). -->
+    <div id="roverCockpit" aria-hidden="true">
+      <div class="rover-pillar rover-pillar-left"></div>
+      <div class="rover-pillar rover-pillar-right"></div>
+      <div class="rover-canopy"></div>
+      <div class="rover-dash">
+        <div class="rover-dash-rail"></div>
+        <div class="rover-dash-readout">
+          <span class="rover-dash-label">ROVER</span>
+          <span class="rover-dash-mode">DRIVE</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="hud" class="hidden">
+      <div id="seedBox" class="hudbox">
+        <div class="lbl" id="hudBoxTitle">SURVEY TARGET</div>
+        <div class="planet" id="hudPlanet">—</div>
+        <div class="lbl">SEED <span id="hudSeed">—</span></div>
+        <div class="lbl">CLASS <span id="hudClass">—</span></div>
+        <div class="lbl" id="hudRangeRow" hidden>
+          RANGE <span id="hudRange">—</span>
+        </div>
+      </div>
+
+      <div id="resBox" class="hudbox">
+        <div id="chips"></div>
+      </div>
+
+      <div id="petCompass" class="hudbox hidden" aria-live="polite">
+        <div class="pet-compass-inner">
+          <div class="pet-compass-arrow-wrap" aria-hidden="true">
+            <svg
+              id="petCompassArrow"
+              class="pet-compass-arrow"
+              width="36"
+              height="36"
+              viewBox="0 0 36 36"
+            >
+              <defs>
+                <linearGradient
+                  id="petArrowGrad"
+                  x1="18"
+                  y1="4"
+                  x2="18"
+                  y2="32"
+                  gradientUnits="userSpaceOnUse"
+                >
+                  <stop offset="0%" stop-color="#b8fff0" />
+                  <stop offset="55%" stop-color="#7df0cf" />
+                  <stop offset="100%" stop-color="#2a8f7a" />
+                </linearGradient>
+              </defs>
+              <!-- Flat chevron with a small top face for a cheap 3D read -->
+              <path
+                fill="url(#petArrowGrad)"
+                d="M18 5 L28 22 L22 22 L22 31 L14 31 L14 22 L8 22 Z"
+              />
+              <path
+                fill="rgba(11,18,24,0.35)"
+                d="M18 5 L28 22 L18 18 Z"
+              />
+            </svg>
+          </div>
+          <div class="pet-compass-meta">
+            <span id="petCompassLabel">COMPANION</span>
+            <span id="petCompassRange">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="fuelBox" class="hudbox">
+        <span id="fuelLabel">FUEL</span>
+        <div id="fuelBar"><div id="fuelFill"></div></div>
+      </div>
+
+      <div id="hintBar" class="hudbox">
+        HOLD <b>LMB</b> EXTRACT / TAME &nbsp;·&nbsp; HOLD <b>SPACE</b> JET
+        &nbsp;·&nbsp; <b>I</b> CARGO
+      </div>
+
+      <div id="roverHintBar" class="hudbox">
+        <b>WASD</b> DRIVE &nbsp;·&nbsp; <b>E</b> EXIT
+      </div>
+
+      <div id="spaceHintBar" class="hudbox">
+        COASTS SLOW &nbsp;·&nbsp; <b>W</b> THRUST &nbsp;·&nbsp;
+        <b>S</b> BRAKE &nbsp;·&nbsp; <b>SHIFT</b> BOOST (LIMITED)
+      </div>
+
+      <div id="promptBar" class="hudbox hidden"></div>
+    </div>
+
+    <div id="reticle" class="hidden">
+      <svg
+        width="72"
+        height="72"
+        viewBox="0 0 72 72"
+        aria-hidden="true"
+      >
+        <g stroke="rgba(217,239,232,.9)" stroke-width="1.5">
+          <line x1="36" y1="27" x2="36" y2="32" />
+          <line x1="36" y1="40" x2="36" y2="45" />
+          <line x1="27" y1="36" x2="32" y2="36" />
+          <line x1="40" y1="36" x2="45" y2="36" />
+        </g>
+        <circle
+          cx="36"
+          cy="36"
+          r="22"
+          fill="none"
+          stroke="rgba(125,240,207,.14)"
+          stroke-width="3"
+        />
+        <circle
+          id="ringFg"
+          cx="36"
+          cy="36"
+          r="22"
+          fill="none"
+          stroke="#7df0cf"
+          stroke-width="3"
+          stroke-linecap="round"
+          stroke-dasharray="138.23"
+          stroke-dashoffset="138.23"
+          transform="rotate(-90 36 36)"
+        />
+      </svg>
+      <div id="targetLabel"></div>
+    </div>
+
+    <div id="notifs"></div>
+
+    <div id="startOverlay" class="overlay">
+      <div class="panel">
+        <div class="eyebrow">PROTOCOL %APP_VERSION%</div>
+        <h1 id="startTitle">Deep Space Atlas</h1>
+        <div class="sub" id="startSub">GENERATING TERRAIN…</div>
+
+        <div class="controls">
+          <div class="ctl">
+            <span>MOVE</span>
+            <span>
+              <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>
+            </span>
+          </div>
+          <div class="ctl"><span>LOOK</span><kbd>MOUSE</kbd></div>
+          <div class="ctl"><span>EXTRACT / TAME</span><kbd>HOLD LMB</kbd></div>
+          <div class="ctl">
+            <span>JUMP · JET</span><kbd>SPACE / HOLD</kbd>
+          </div>
+          <div class="ctl"><span>SPRINT</span><kbd>SHIFT</kbd></div>
+          <div class="ctl"><span>CARGO</span><kbd>I</kbd></div>
+          <div class="ctl"><span>PROFILE</span><kbd>P</kbd></div>
+          <div class="ctl"><span>MUTE</span><kbd>M</kbd></div>
+        </div>
+
+        <div class="btnrow btnrow-primary">
+          <button id="btnPlay" type="button">CONTINUE</button>
+        </div>
+        <div class="btnrow btnrow-secondary">
+          <button id="btnSaveGame" type="button" class="hidden">
+            SAVE GAME
+          </button>
+          <button id="btnLoadGame" type="button">LOAD GAME</button>
+          <button id="btnNewGame" type="button">NEW GAME</button>
+        </div>
+        <input
+          id="gameFileInput"
+          type="file"
+          accept=".deepspaceatlas,application/json"
+          hidden
+        />
+        <div class="footnote">
+          RARE AETHERITE SIGNALS DETECTED AT HIGH ALTITUDE
+        </div>
+      </div>
+    </div>
+
+    <div id="cmdOverlay" class="overlay cmd-overlay hidden">
+      <div class="cmd-bar" role="dialog" aria-label="Command bar">
+        <label class="cmd-row" for="cmdInput">
+          <span class="cmd-glyph" aria-hidden="true">›</span>
+          <input
+            id="cmdInput"
+            type="text"
+            maxlength="96"
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+            placeholder=""
+          />
+        </label>
+        <div id="cmdFeedback" class="cmd-feedback" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div id="invOverlay" class="overlay hidden">
+      <div class="panel">
+        <div class="eyebrow">VESSEL STORAGE</div>
+        <h1 class="inventory-title">CARGO HOLD</h1>
+        <div id="invGrid"></div>
+        <div class="btnrow">
+          <button id="invClose" type="button">CLOSE&nbsp;&nbsp;[ I ]</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="profileOverlay" class="overlay hidden">
+      <div class="panel profile-panel">
+        <div class="eyebrow">COMMANDER LOG</div>
+        <h1 class="inventory-title">PROFILE</h1>
+        <label class="profile-field" for="profileName">
+          <span class="profile-label">CALLSIGN</span>
+          <span class="profile-name-row">
+            <input
+              id="profileName"
+              type="text"
+              maxlength="24"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button id="profileNameSave" type="button">SAVE</button>
+          </span>
+        </label>
+        <div class="profile-stat">
+          <span class="profile-label">TIME SURVEYED</span>
+          <span id="profilePlayTime">0s</span>
+        </div>
+        <div class="profile-section-title">VISITED PLANETS</div>
+        <p id="profileVisitedEmpty" class="profile-empty">
+          No surveyed worlds yet.
+        </p>
+        <div id="profileVisited" class="profile-visited hidden"></div>
+        <div class="btnrow">
+          <button id="profileClose" type="button">CLOSE&nbsp;&nbsp;[ P ]</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="errOverlay" class="overlay hidden">
+      <div class="panel">
+        <div class="eyebrow">SYSTEM FAULT</div>
+        <h1 id="errTitle">RENDERER OFFLINE</h1>
+        <p id="errMsg">WebGL could not be initialized.</p>
+      </div>
+    </div>
+
+    <!-- This classic script still runs if the Vite module graph fails. -->
+    <script>
+      window.setTimeout(function checkBoot() {
+        if (window.__booted) return;
+
+        var errorOverlay = document.getElementById("errOverlay");
+        document.getElementById("errTitle").textContent = "BOOT FAILURE";
+        document.getElementById("errMsg").textContent =
+          "The engine failed to start. WebGL may be unavailable, or an application module failed to load. Check the browser console and reload.";
+        errorOverlay.classList.remove("hidden");
+        document.getElementById("startOverlay").classList.add("hidden");
+      }, 8000);
+    </script>
+    <script type="module" src="./js/main.ts"></script>
+  </body>
+</html>
