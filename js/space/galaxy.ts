@@ -314,6 +314,18 @@ export function horizonProxiesNear(
 }
 
 /**
+ * Surface clearance when leaving a planet or spawning beside a seed.
+ * Just outside {@link LAND_RANGE} so the body fills the view and LAND is one
+ * nudge away.
+ */
+export const ENTRY_SURFACE_STANDOFF = LAND_RANGE + 280;
+
+/** Center distance used by {@link entryPoseForSeed}. */
+export function entryStandoffForRadius(radius: number): number {
+  return radius + ENTRY_SURFACE_STANDOFF;
+}
+
+/**
  * Ship pose near a seed's proxy: offset away from the galaxy origin with the
  * nose aimed at the body, so it is in view when space resumes.
  */
@@ -332,7 +344,7 @@ export function entryPoseForSeed(seed: number): ShipPose {
           y: proxy.position.y / length,
           z: proxy.position.z / length,
         };
-  const standoff = proxy.radius * 4 + 3000;
+  const standoff = entryStandoffForRadius(proxy.radius);
   const position: Vec3 = {
     x: proxy.position.x + away.x * standoff,
     y: proxy.position.y + away.y * standoff,

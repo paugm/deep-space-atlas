@@ -102,6 +102,8 @@ export interface Gameplay {
   toggleInventory(): void;
   toggleBuildMenu(): void;
   toggleProfile(): void;
+  /** Open a commander menu without toggling closed if already there. */
+  openMenu(menu: "inventory" | "build" | "profile"): void;
   toggleCommandBar(): void;
   closeCommandBar(): void;
   dismissCommandBar(): void;
@@ -165,6 +167,8 @@ export interface GameplayDependencies {
   onInventoryChanged?: (inventory: Inventory) => void;
   onBuildsChanged?: (builds: readonly BuildId[]) => void;
   onProfileOpen?: () => void;
+  /** Flush autosave when opening a commander menu or command bar. */
+  onPersistCheckpoint?: () => void;
 }
 
 /**
@@ -185,6 +189,7 @@ export function createGameplay({
   onInventoryChanged,
   onBuildsChanged,
   onProfileOpen,
+  onPersistCheckpoint,
 }: GameplayDependencies): Gameplay {
   const player: PlayerState = {
     position: new THREE.Vector3(),
@@ -462,6 +467,7 @@ export function createGameplay({
     if (!willOpen && wasOpen) Sound.uiClose();
 
     if (next !== "none") {
+      onPersistCheckpoint?.();
       if (locked) document.exitPointerLock();
       return;
     }
@@ -486,6 +492,11 @@ export function createGameplay({
   function toggleProfile(): void {
     if (!started) return;
     setOverlay(profileOpen ? "none" : "profile");
+  }
+
+  function openMenu(menu: "inventory" | "build" | "profile"): void {
+    if (!started) return;
+    setOverlay(menu);
   }
 
   function toggleCommandBar(): void {
@@ -1303,6 +1314,7 @@ export function createGameplay({
     toggleInventory,
     toggleBuildMenu,
     toggleProfile,
+    openMenu,
     toggleCommandBar,
     closeCommandBar,
     dismissCommandBar,

@@ -36,6 +36,8 @@ export {
   CRUISE_SPEED,
   flightCameraShake,
   flightEffectIntensity,
+  flightSpeedBarRatio,
+  formatFlightSpeed,
   initialCruiseVelocity,
   integrateFlight,
   stepBoostFuel,

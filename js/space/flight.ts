@@ -200,6 +200,17 @@ export function initialCruiseVelocity(axes: FlightAxes): FlightState {
   };
 }
 
+/** Whole-number HUD readout for cockpit speed. */
+export function formatFlightSpeed(speed: number): string {
+  return String(Math.max(0, Math.round(speed)));
+}
+
+/** Fill fraction for the speed bar (0..1 vs peak boost). */
+export function flightSpeedBarRatio(speed: number): number {
+  if (speed <= 0) return 0;
+  return Math.min(1, speed / BOOST_SPEED);
+}
+
 /** Map speed/thrust into a 0..1 visual intensity for FOV widen and bob. */
 export function flightEffectIntensity(
   speedRatio: number,

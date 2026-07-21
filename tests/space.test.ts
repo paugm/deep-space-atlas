@@ -19,11 +19,14 @@ import {
   cellContaining,
   cellOfSeed,
   distanceBetween,
+  ENTRY_SURFACE_STANDOFF,
   entryPoseForSeed,
+  entryStandoffForRadius,
   feistelForward,
   feistelInverse,
   findCrashLanding,
   horizonProxiesNear,
+  LAND_RANGE,
   pickProxy,
   poseForward,
   proxiesNear,
@@ -49,6 +52,8 @@ import {
   CRUISE_SPEED,
   flightCameraShake,
   flightEffectIntensity,
+  flightSpeedBarRatio,
+  formatFlightSpeed,
   initialCruiseVelocity,
   integrateFlight,
   stepBoostFuel,
@@ -299,6 +304,23 @@ describe("entryPoseForSeed", () => {
       ).toBe(true);
     }
   });
+
+  it("spawns just outside land range beside the body", () => {
+    for (const seed of SAMPLE_SEEDS) {
+      const pose = entryPoseForSeed(seed);
+      const proxy = {
+        seed,
+        position: seedPosition(seed),
+        radius: proxyRadius(seed),
+      };
+      expect(entryStandoffForRadius(proxy.radius)).toBe(
+        proxy.radius + ENTRY_SURFACE_STANDOFF,
+      );
+      const range = surfaceRange(pose.position, proxy);
+      expect(range).toBeCloseTo(ENTRY_SURFACE_STANDOFF, 5);
+      expect(range).toBeGreaterThan(LAND_RANGE);
+    }
+  });
 });
 
 describe("pickProxy", () => {
@@ -481,6 +503,19 @@ describe("integrateFlight", () => {
     forward: { x: 0, y: 0, z: -1 },
     right: { x: 1, y: 0, z: 0 },
   };
+
+  it("formats cockpit speed readouts against boost peak", () => {
+    expect(formatFlightSpeed(0)).toBe("0");
+    expect(formatFlightSpeed(219.6)).toBe("220");
+    expect(formatFlightSpeed(-3)).toBe("0");
+    expect(flightSpeedBarRatio(0)).toBe(0);
+    expect(flightSpeedBarRatio(CRUISE_SPEED)).toBeCloseTo(
+      CRUISE_SPEED / BOOST_SPEED,
+      5,
+    );
+    expect(flightSpeedBarRatio(BOOST_SPEED)).toBe(1);
+    expect(flightSpeedBarRatio(BOOST_SPEED * 2)).toBe(1);
+  });
 
   it("coasts forward with no thrust keys held", () => {
     const step = integrateFlight({

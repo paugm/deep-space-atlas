@@ -19,6 +19,10 @@ import {
   type PetCompassReading,
 } from "./fauna/compass.ts";
 import {
+  formatFlightSpeed,
+  flightSpeedBarRatio,
+} from "./space/flight.ts";
+import {
   MAX_PLAYER_NAME_LENGTH,
   formatPlayTime,
 } from "./player-profile.ts";
@@ -29,6 +33,7 @@ export interface UIActions {
   onToggleInventory: () => void;
   onToggleBuildMenu: () => void;
   onToggleProfile: () => void;
+  onOpenMenu: (menu: "inventory" | "build" | "profile") => void;
   onDismissCommandBar: () => void;
   onCommandSubmit: (line: string) => void;
   onBuildItem: (buildId: BuildId) => void;
@@ -65,6 +70,7 @@ export interface UI {
   bindActions(actions: UIActions): void;
   notify(text: string, color: string): void;
   setFuel(fuel: number): void;
+  setFlightSpeed(speed: number, boosting: boolean): void;
   setInventoryVisible(visible: boolean): void;
   setBuildMenuVisible(visible: boolean): void;
   setProfileVisible(visible: boolean): void;
@@ -141,6 +147,8 @@ export function createUI(): UI {
     profilePlayTime: byId("profilePlayTime", HTMLSpanElement),
     profileVisited: byId("profileVisited", HTMLDivElement),
     profileVisitedEmpty: byId("profileVisitedEmpty", HTMLParagraphElement),
+    profilePets: byId("profilePets", HTMLDivElement),
+    profilePetsEmpty: byId("profilePetsEmpty", HTMLParagraphElement),
     commandOverlay: byId("cmdOverlay", HTMLDivElement),
     commandInput: byId("cmdInput", HTMLInputElement),
     commandFeedback: byId("cmdFeedback", HTMLDivElement),
@@ -162,12 +170,15 @@ export function createUI(): UI {
     targetLabel: byId("targetLabel", HTMLDivElement),
     fuelFill: byId("fuelFill", HTMLDivElement),
     fuelLabel: byId("fuelLabel", HTMLSpanElement),
+    speedFill: byId("speedFill", HTMLDivElement),
+    speedValue: byId("speedValue", HTMLSpanElement),
     notifications: byId("notifs", HTMLDivElement),
     roverCockpit: byId("roverCockpit", HTMLDivElement),
   };
 
   let lastTargetLabel = "";
   let lastFuelPercentage = -1;
+  let lastSpeedKey = "";
   let lastPrompt = "";
   let lastPetCompassKey = "";
   let boundActions: UIActions | null = null;
@@ -524,6 +535,7 @@ export function createUI(): UI {
     elements.hudRangeRow.hidden = mode !== "space";
     setPrompt("");
     if (mode === "space") setPetCompass(null);
+    if (mode !== "space") setFlightSpeed(0, false);
   }
 
   function setRoverDriving(active: boolean): void {
@@ -707,6 +719,33 @@ export function createUI(): UI {
     elements.profileName.maxLength = MAX_PLAYER_NAME_LENGTH;
     elements.profilePlayTime.textContent = formatPlayTime(view.playTimeMs);
 
+    const companions = view.visited.filter((entry) => entry.hasPet);
+    const hasCompanions = companions.length > 0;
+    elements.profilePetsEmpty.classList.toggle("hidden", hasCompanions);
+    elements.profilePets.classList.toggle("hidden", !hasCompanions);
+    elements.profilePets.replaceChildren();
+    for (const entry of companions) {
+      const row = document.createElement("div");
+      row.className = "profile-pet";
+      if (currentSeedHex !== null && entry.seed === currentSeedHex) {
+        row.classList.add("current");
+      }
+
+      const title = document.createElement("div");
+      title.className = "profile-pet-name";
+      title.textContent = entry.name.toUpperCase();
+
+      const detail = document.createElement("div");
+      detail.className = "profile-pet-detail";
+      detail.textContent =
+        currentSeedHex !== null && entry.seed === currentSeedHex
+          ? `${entry.seed} · HERE`
+          : entry.seed;
+
+      row.append(title, detail);
+      elements.profilePets.append(row);
+    }
+
     elements.profileVisited.replaceChildren();
     const hasVisits = view.visited.length > 0;
     elements.profileVisitedEmpty.classList.toggle("hidden", hasVisits);
@@ -787,6 +826,17 @@ export function createUI(): UI {
     elements.fuelFill.classList.toggle("low", percentage < 25);
   }
 
+  function setFlightSpeed(speed: number, boosting: boolean): void {
+    const readout = formatFlightSpeed(speed);
+    const ratio = flightSpeedBarRatio(speed);
+    const key = `${readout}|${ratio.toFixed(3)}|${boosting ? 1 : 0}`;
+    if (key === lastSpeedKey) return;
+    lastSpeedKey = key;
+    elements.speedValue.textContent = readout;
+    elements.speedFill.style.width = `${Math.round(ratio * 100)}%`;
+    elements.speedFill.classList.toggle("boosting", boosting);
+  }
+
   function showFatal(title: string, message: string): void {
     elements.errorTitle.textContent = title;
     elements.errorMessage.textContent = message;
@@ -829,6 +879,16 @@ export function createUI(): UI {
       "click",
       actions.onToggleProfile,
     );
+    for (const tab of document.querySelectorAll<HTMLButtonElement>(
+      ".menu-tab[data-menu]",
+    )) {
+      tab.addEventListener("click", () => {
+        const menu = tab.dataset.menu;
+        if (menu === "inventory" || menu === "build" || menu === "profile") {
+          actions.onOpenMenu(menu);
+        }
+      });
+    }
     elements.profileNameSave.addEventListener("click", () => {
       actions.onProfileRename(elements.profileName.value);
       elements.profileNameSave.blur();
@@ -863,6 +923,7 @@ export function createUI(): UI {
     bindActions,
     notify,
     setFuel,
+    setFlightSpeed,
     setInventoryVisible,
     setBuildMenuVisible,
     setProfileVisible,

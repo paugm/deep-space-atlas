@@ -5,7 +5,8 @@ profile** (not per-planet), stack their modifiers, and travel with the
 commander across worlds and campaign saves.
 
 Cargo (**I**) stays materials-only. The **Build Bay** (**B**) is where recipes
-and installed gear are shown.
+and installed gear are shown. Cargo, Build, and Profile share a tab strip so
+you can move between them without closing.
 
 ## Player flow
 

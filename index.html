@@ -86,6 +86,12 @@
         </div>
       </div>
 
+      <div id="speedBox" class="hudbox" aria-live="polite">
+        <span id="speedLabel">SPD</span>
+        <div id="speedBar"><div id="speedFill"></div></div>
+        <span id="speedValue">0</span>
+      </div>
+
       <div id="fuelBox" class="hudbox">
         <span id="fuelLabel">FUEL</span>
         <div id="fuelBar"><div id="fuelFill"></div></div>
@@ -215,7 +221,36 @@
     </div>
 
     <div id="invOverlay" class="overlay hidden">
-      <div class="panel">
+      <div class="panel menu-panel">
+        <div class="menu-tabs" role="tablist" aria-label="Commander menus">
+          <button
+            type="button"
+            class="menu-tab active"
+            role="tab"
+            aria-selected="true"
+            data-menu="inventory"
+          >
+            CARGO <kbd>I</kbd>
+          </button>
+          <button
+            type="button"
+            class="menu-tab"
+            role="tab"
+            aria-selected="false"
+            data-menu="build"
+          >
+            BUILD <kbd>B</kbd>
+          </button>
+          <button
+            type="button"
+            class="menu-tab"
+            role="tab"
+            aria-selected="false"
+            data-menu="profile"
+          >
+            PROFILE <kbd>P</kbd>
+          </button>
+        </div>
         <div class="eyebrow">VESSEL STORAGE</div>
         <h1 class="inventory-title">CARGO HOLD</h1>
         <div id="invGrid"></div>
@@ -226,7 +261,36 @@
     </div>
 
     <div id="buildOverlay" class="overlay hidden">
-      <div class="panel build-panel">
+      <div class="panel menu-panel build-panel">
+        <div class="menu-tabs" role="tablist" aria-label="Commander menus">
+          <button
+            type="button"
+            class="menu-tab"
+            role="tab"
+            aria-selected="false"
+            data-menu="inventory"
+          >
+            CARGO <kbd>I</kbd>
+          </button>
+          <button
+            type="button"
+            class="menu-tab active"
+            role="tab"
+            aria-selected="true"
+            data-menu="build"
+          >
+            BUILD <kbd>B</kbd>
+          </button>
+          <button
+            type="button"
+            class="menu-tab"
+            role="tab"
+            aria-selected="false"
+            data-menu="profile"
+          >
+            PROFILE <kbd>P</kbd>
+          </button>
+        </div>
         <div class="eyebrow">FABRICATOR</div>
         <h1 class="inventory-title">BUILD BAY</h1>
         <p class="build-intro">
@@ -247,7 +311,36 @@
     </div>
 
     <div id="profileOverlay" class="overlay hidden">
-      <div class="panel profile-panel">
+      <div class="panel menu-panel profile-panel">
+        <div class="menu-tabs" role="tablist" aria-label="Commander menus">
+          <button
+            type="button"
+            class="menu-tab"
+            role="tab"
+            aria-selected="false"
+            data-menu="inventory"
+          >
+            CARGO <kbd>I</kbd>
+          </button>
+          <button
+            type="button"
+            class="menu-tab"
+            role="tab"
+            aria-selected="false"
+            data-menu="build"
+          >
+            BUILD <kbd>B</kbd>
+          </button>
+          <button
+            type="button"
+            class="menu-tab active"
+            role="tab"
+            aria-selected="true"
+            data-menu="profile"
+          >
+            PROFILE <kbd>P</kbd>
+          </button>
+        </div>
         <div class="eyebrow">COMMANDER LOG</div>
         <h1 class="inventory-title">PROFILE</h1>
         <label class="profile-field" for="profileName">
@@ -267,6 +360,11 @@
           <span class="profile-label">TIME SURVEYED</span>
           <span id="profilePlayTime">0s</span>
         </div>
+        <div class="profile-section-title">COMPANIONS</div>
+        <p id="profilePetsEmpty" class="profile-empty">
+          No bonded companions yet.
+        </p>
+        <div id="profilePets" class="profile-pets hidden"></div>
         <div class="profile-section-title">VISITED PLANETS</div>
         <p id="profileVisitedEmpty" class="profile-empty">
           No surveyed worlds yet.

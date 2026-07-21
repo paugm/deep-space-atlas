@@ -139,6 +139,25 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
   let loadChain: Promise<void> = Promise.resolve();
   let profileHydrated = false;
 
+  /** Immediate planet + profile write (cancels pending debounced saves). */
+  function persistNow(): void {
+    if (!profileHydrated) return;
+    void planetSession.flush();
+    void profileSession.flush();
+  }
+
+  /**
+   * Periodic safety net while the pointer is locked. Unlock, menus, and tab
+   * hide also flush; this covers long sessions without those events.
+   */
+  const AUTOSAVE_HEARTBEAT_MS = 45_000;
+  window.setInterval(() => {
+    if (!profileHydrated) return;
+    if (!isPointerLocked()) return;
+    if (mode !== "planet" && mode !== "space") return;
+    persistNow();
+  }, AUTOSAVE_HEARTBEAT_MS);
+
   function isPointerLocked(): boolean {
     return document.pointerLockElement === webglRenderer.domElement;
   }
@@ -194,6 +213,9 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     onProfileOpen() {
       refreshProfileUi();
     },
+    onPersistCheckpoint() {
+      persistNow();
+    },
   });
 
   livePlanetCapture.run = () => {
@@ -240,6 +262,11 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     },
     onBoostFuel(fuel) {
       if (mode === "space" || mode === "landing") ui.setFuel(fuel);
+    },
+    onFlightSpeed(speed, boosting) {
+      if (mode === "space" || mode === "landing" || mode === "launch") {
+        ui.setFlightSpeed(speed, boosting);
+      }
     },
   });
 
@@ -607,6 +634,9 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     onToggleProfile(): void {
       gameplay.toggleProfile();
     },
+    onOpenMenu(menu): void {
+      gameplay.openMenu(menu);
+    },
     onDismissCommandBar(): void {
       gameplay.dismissCommandBar();
     },
@@ -787,8 +817,13 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
   });
 
   // Space-mode overlay bookkeeping: gameplay ignores lock while inactive.
+  // Any unlock (planet Escape/click-away or space pause) forces an autosave.
   document.addEventListener("pointerlockchange", () => {
-    if (mode === "space" && isPointerLocked()) ui.showPlaying();
+    if (isPointerLocked()) {
+      if (mode === "space") ui.showPlaying();
+      return;
+    }
+    persistNow();
   });
   document.addEventListener("pointerlockerror", () => {
     if (mode === "space") ui.showOverlay("paused");
@@ -821,16 +856,13 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
 
   // Tab/page hide are the last reliable times to persist. Browsers routinely
   // kill async IndexedDB writes during beforeunload. Both events can fire for
-  // one leave, and flush serializes overlapping callers.
-  function persistOnLeave(): void {
-    void planetSession.flush();
-    void profileSession.flush();
-  }
+  // one leave, and flush serializes overlapping callers. Unlock, menus, and a
+  // 45s heartbeat also call persistNow while the tab is alive.
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "hidden") return;
-    persistOnLeave();
+    persistNow();
   });
-  window.addEventListener("pagehide", persistOnLeave);
+  window.addEventListener("pagehide", persistNow);
 
   const timer = new THREE.Timer();
   timer.connect(document);

@@ -240,6 +240,51 @@ canvas {
   background: var(--danger);
 }
 
+#speedBox {
+  bottom: 100px;
+  left: 50%;
+  display: none;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 14px;
+  transform: translateX(-50%);
+}
+
+#speedLabel {
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+}
+
+#speedBar {
+  width: 190px;
+  height: 6px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.4);
+}
+
+#speedFill {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(90deg, #4aa896, var(--accent));
+  box-shadow: 0 0 10px rgba(125, 240, 207, 0.25);
+}
+
+#speedFill.boosting {
+  background: linear-gradient(90deg, #7df0cf, #c8fff0);
+  box-shadow: 0 0 14px rgba(125, 240, 207, 0.55);
+}
+
+#speedValue {
+  min-width: 3ch;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 #reticle {
   position: fixed;
   z-index: 3;
@@ -402,11 +447,13 @@ canvas {
 .panel {
   position: relative;
   width: min(560px, 92vw);
+  max-width: 100%;
   padding: 34px 40px 30px;
   border: 1px solid var(--line);
   background: var(--panel);
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(14px);
+  overflow-x: hidden;
 }
 
 #startOverlay .panel {
@@ -438,6 +485,56 @@ canvas {
   bottom: -1px;
   border-right: 2px solid var(--accent);
   border-bottom: 2px solid var(--accent);
+}
+
+/* Corner ticks stay on the home start menu only. */
+.menu-panel::before,
+.menu-panel::after {
+  content: none;
+}
+
+.menu-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: -6px 0 18px;
+  min-width: 0;
+}
+
+.menu-tab {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 8px 6px;
+  color: var(--dim);
+  border: 1px solid var(--line);
+  background: transparent;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.menu-tab kbd {
+  padding: 1px 5px;
+  color: inherit;
+  border-color: rgba(125, 240, 207, 0.18);
+  background: rgba(125, 240, 207, 0.04);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.menu-tab:hover {
+  border-color: rgba(125, 240, 207, 0.4);
+  color: var(--ink);
+}
+
+.menu-tab.active {
+  color: var(--accent);
+  border-color: rgba(125, 240, 207, 0.55);
+  background: rgba(125, 240, 207, 0.08);
 }
 
 .eyebrow {
@@ -626,11 +723,6 @@ button:active {
   overflow-y: auto;
 }
 
-.build-panel::before,
-.build-panel::after {
-  content: none;
-}
-
 .build-intro {
   margin: -8px 0 18px;
   color: var(--dim);
@@ -730,7 +822,8 @@ button:active {
 .profile-panel {
   width: min(440px, calc(100vw - 48px));
   max-height: calc(100vh - 64px);
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .profile-field,
@@ -790,11 +883,49 @@ button:active {
   letter-spacing: 0.08em;
 }
 
+.profile-pets {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+  min-width: 0;
+}
+
+.profile-pet {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(125, 240, 207, 0.22);
+  background: rgba(8, 18, 16, 0.55);
+}
+
+.profile-pet.current {
+  border-color: rgba(125, 240, 207, 0.5);
+}
+
+.profile-pet-name {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-pet-detail {
+  margin-top: 4px;
+  color: var(--dim);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  overflow-wrap: anywhere;
+}
+
 .profile-visited {
   display: flex;
   flex-direction: column;
   gap: 8px;
   margin-bottom: 18px;
+  min-width: 0;
 }
 
 .profile-visit {
@@ -802,6 +933,7 @@ button:active {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
   padding: 10px 12px;
   border: 1px solid rgba(125, 240, 207, 0.18);
   background: rgba(8, 18, 16, 0.55);
@@ -830,6 +962,7 @@ button:active {
   color: var(--dim);
   font-size: 10px;
   letter-spacing: 0.14em;
+  overflow-wrap: anywhere;
 }
 
 .profile-travel {
@@ -839,7 +972,10 @@ button:active {
 }
 
 .profile-travel:disabled {
-  opacity: 0.45;
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.08);
+  opacity: 1;
   cursor: default;
 }
 
@@ -1008,7 +1144,11 @@ body.space-mode #petCompass {
 }
 
 body.space-mode #fuelBox {
-  display: block;
+  display: flex;
+}
+
+body.space-mode #speedBox {
+  display: flex;
 }
 
 body.space-mode #spaceHintBar {

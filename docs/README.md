@@ -152,8 +152,9 @@ Delta is capped at 50 ms. Both transitions cut through a black fade
 - **Board:** `startLaunchAscent` removes the parked hull, parents the shared
   cockpit to the planet camera, and carries it up from the pad with accelerating
   altitude, nose-up pitch, and vertical rumble for about 1.6 s. It fades to
-  black, disposes the world, and resumes space in cockpit control near that
-  seed's proxy.
+  black, disposes the world, and resumes space in cockpit control beside that
+  seed's proxy (`entryPoseForSeed`: surface standoff
+  `ENTRY_SURFACE_STANDOFF`, just outside `LAND_RANGE`).
 
 ### Planet motion, water, and collision
 
@@ -268,13 +269,15 @@ queries and worker jobs local as the cave grows. Distant chunks parse and index
 cheaply, but are not meshed during load.
 
 Writes flush after a 400 ms debounce, when the player leaves a planet (travel
-or launch), and on `visibilitychange → hidden` plus `pagehide`. Those are the
-last reliable times to persist; async IndexedDB writes started in `beforeunload`
-are killed. Every flush calls `onBeforeFlush`, which snapshots the live player,
-pet, parked ship, and present rover poses into the active document before
-sealing. After a launch, the planet session calls `suspend()` so hide events do
-not rewrite a disposed world. The next `open` uses `skipFlush` if the caller
-already flushed.
+or launch), on pointer unlock (Standby / Escape / click-away), when opening
+Cargo / Build / Profile / the command bar, every 45 s while the pointer is
+locked in planet or space mode, and on `visibilitychange → hidden` plus
+`pagehide`. Hide events are the last reliable times when closing a tab;
+async IndexedDB writes started in `beforeunload` are killed. Every flush
+calls `onBeforeFlush`, which snapshots the live player, pet, parked ship, and
+present rover poses into the active document before sealing. After a launch,
+the planet session calls `suspend()` so hide events do not rewrite a disposed
+world. The next `open` uses `skipFlush` if the caller already flushed.
 
 Unsupported surface props are recomputed from the cave field and do not appear
 in planet patches. The space cockpit pose is not persisted.
@@ -284,10 +287,12 @@ in planet patches. The space cockpit pose is not persisted.
 The profile holds callsign, cargo, playtime, master audio mute, installed
 fabricator builds, and visited planets. Mute is off by default, so sound is on;
 **M** / `/mute` saves the choice here. Builds are permanent profile upgrades
-(see [`builds.md`](builds.md)); **B** opens the Build Bay. The profile only
-caches `hasPet`; pets remain planet-bound in `entities[]`. The profile document
-version is `PLAYER_PROFILE_VERSION` (3). Loading v1 adds `muted: false` and
-empty `builds`; loading v2 adds empty `builds`.
+(see [`builds.md`](builds.md)); **B** opens the Build Bay. Cargo (**I**), Build
+(**B**), and Profile (**P**) share a tab strip so you can jump between them
+without closing. The profile lists companions (visited worlds with `hasPet`)
+above the visited-planet index; pets remain planet-bound in `entities[]`. The
+profile document version is `PLAYER_PROFILE_VERSION` (3). Loading v1 adds
+`muted: false` and empty `builds`; loading v2 adds empty `builds`.
 
 #### Portable file (`.deepspaceatlas`, `v: 2`)
 
@@ -333,7 +338,7 @@ and last ground pose, then restores it with a short greeting on return.
 
 With a pet on the active world, the top-center HUD compass shows its species,
 range, and bearing relative to look yaw (`js/fauna/compass.ts` +
-`#petCompass`).
+`#petCompass`). Profile (**P**) also lists companion worlds under COMPANIONS.
 
 ### Rovers
 
@@ -400,8 +405,11 @@ is on by default.
 - **Parked ship:** a planet gets an `entities[]` entry when its ship is placed
   or moved, including `/spawn spaceship` and the first-visit default pad.
   `placeAt` restores it on open; otherwise it uses the default pad beside
-  spawn. The space cockpit pose is not persisted. Entering space starts near
-  the current seed's proxy, or a random seed's proxy.
+  spawn. The space cockpit pose is not persisted. Entering space (launch or
+  travel) places the ship beside the current seed's proxy — surface standoff
+  `ENTRY_SURFACE_STANDOFF` (`LAND_RANGE + 280`) via `entryPoseForSeed` — or
+  beside a random seed's proxy when starting fresh. The cockpit HUD shows a
+  speed bar/readout (vs `BOOST_SPEED`) above the boost fuel gauge.
 
 ### World generation invariants
 

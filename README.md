@@ -42,7 +42,7 @@ see [`CREDITS.md`](CREDITS.md).
 
 <pre>
 ┌──────────────────────────────────────────────────────────────┐
-│  DEEP SPACE ATLAS //// SPEC SHEET                   v0.19.0  │
+│  DEEP SPACE ATLAS //// SPEC SHEET                   v0.20.0  │
 ├──────────────────────────────────────────────────────────────┤
 │  WORLDS                                                      │
 │    PLANETS ........ 4,294,967,296                            │
@@ -81,9 +81,9 @@ see [`CREDITS.md`](CREDITS.md).
 | Space | Jump |
 | Hold Space (airborne) | Jetpack |
 | Shift (forward) | Sprint (disabled while swimming) |
-| I | Cargo hold |
-| B | Build bay (fabricator) |
-| P | Commander profile |
+| I | Cargo hold (tabs to Build / Profile) |
+| B | Build bay / fabricator (tabs to Cargo / Profile) |
+| P | Commander profile (tabs to Cargo / Build; companions + visits) |
 | M | Mute / unmute audio |
 | E (look at rover) | Board / exit a wheeled rover |
 | E near ship | Board and launch to space |
@@ -101,9 +101,11 @@ see [`CREDITS.md`](CREDITS.md).
 | M | Mute / unmute audio |
 | Escape | Pause |
 
-Aim at a planet proxy to read its name, seed, class, and range. Drop below the
+Speed and boost fuel sit at the bottom center of the cockpit HUD. Aim at a
+planet proxy to read its name, seed, class, and range. Drop below the
 landing threshold, or fly into the shell, to reach that world. Board the parked
-ship near spawn to head back to space.
+ship near spawn to head back to space — you resume flight right beside that
+planet.
 
 Saves live in IndexedDB. From the pause overlay, SAVE GAME / LOAD GAME export a
 portable `.deepspaceatlas` campaign file.

@@ -66,8 +66,10 @@ export interface SpaceSystemDependencies {
   /** Landing intent; main owns the cinematic. */
   onLandRequest(seed: number): void;
   onPause(): void;
-  /** Shared HUD fuel ratio (0..1). */
+  /** Shared HUD boost fuel ratio (0..1). */
   onBoostFuel?(fuel: number): void;
+  /** Cockpit speed for the space HUD (world units / s). */
+  onFlightSpeed?(speed: number, boosting: boolean): void;
 }
 
 export interface SpaceSystem {
@@ -138,6 +140,7 @@ export function createSpaceSystem({
   onLandRequest,
   onPause,
   onBoostFuel,
+  onFlightSpeed,
 }: SpaceSystemDependencies): SpaceSystem {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color("#02050a");
@@ -419,6 +422,7 @@ export function createSpaceSystem({
     landingRequested = false;
     boostFuel = 1;
     onBoostFuel?.(1);
+    onFlightSpeed?.(0, false);
     wasBoosting = false;
     clearFlightEffects();
     syncProxies();
@@ -522,6 +526,7 @@ export function createSpaceSystem({
       setFlightEffects(0.3, false);
       shakePhase += deltaTime * 10;
       Sound.setSpaceFlight(0.2, 0.15, false);
+      onFlightSpeed?.(0, false);
     } else if (isPointerLocked()) {
       const forward = poseForward(pose);
       const right = {
@@ -563,6 +568,7 @@ export function createSpaceSystem({
         boosting: fuelStep.boosting,
       });
       velocity.set(step.velocity.vx, step.velocity.vy, step.velocity.vz);
+      onFlightSpeed?.(step.speed, fuelStep.boosting);
 
       Sound.setSpaceFlight(
         step.speedRatio,
@@ -582,6 +588,7 @@ export function createSpaceSystem({
       wasBoosting = false;
       Sound.setSpaceFlight(0, 0, false);
       Sound.jetOff();
+      onFlightSpeed?.(Math.hypot(velocity.x, velocity.y, velocity.z), false);
     }
 
     const previous = {
