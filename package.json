@@ -1,6 +1,6 @@
 {
   "name": "deep-space-atlas",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "private": true,
   "license": "MIT",
   "description": "First-person mining and exploration in the browser. A 32-bit seed builds the terrain, biome, resources, decoration, planet name, and spawn.",

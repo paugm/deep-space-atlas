@@ -2,6 +2,7 @@ export {
   FAUNA_DEFINITIONS,
   FAUNA_SPECIES,
   isFaunaSpeciesId,
+  pickRandomFaunaSpecies,
   type FaunaSpeciesDefinition,
   type FaunaSpeciesId,
 } from "./species.ts";

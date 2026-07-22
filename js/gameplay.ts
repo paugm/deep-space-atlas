@@ -8,11 +8,14 @@ import type { AimHit, World, WorldSystem } from "./world.ts";
 import * as THREE from "three";
 
 import { Sound } from "./audio.ts";
-import type { BuildId, BuildModifiers, TryBuildReason } from "./builds.ts";
+import type { GearId, GearModifiers, TryInstallGearReason } from "./gear.ts";
 import {
-  resolveBuildModifiers,
-  tryBuild,
-} from "./builds.ts";
+  resolveGearModifiers,
+  tryInstallGear,
+} from "./gear.ts";
+import type { TryFabricateReason } from "./blueprints.ts";
+import { tryFabricate } from "./blueprints.ts";
+import type { StructurePlacementReason, StructureSystem } from "./structures/index.ts";
 import {
   type SolidCollider,
   resolveCapsuleAgainstSolids,
@@ -89,21 +92,35 @@ export interface Gameplay {
   }): void;
   /** Updates cargo without notifying UI. */
   loadInventory(next: Inventory): void;
-  /** Updates installed builds and refreshes modifiers. */
-  loadBuilds(next: readonly BuildId[]): void;
+  /** Updates installed gear and refreshes modifiers. */
+  loadGear(next: readonly GearId[]): void;
   /**
-   * Install a fabricator build. Menu builds spend cargo; `free` skips cost
+   * Install commander gear. Menu installs spend cargo; `free` skips cost
    * (slash command). Returns false when the install is rejected.
    */
-  attemptBuild(
-    buildId: string,
+  attemptInstallGear(
+    gearId: string,
     options?: { free?: boolean },
-  ): { ok: true; label: string } | { ok: false; reason: TryBuildReason };
+  ): { ok: true; label: string } | { ok: false; reason: TryInstallGearReason };
+  /**
+   * Fabricate a field structure ahead of the commander. Menu builds spend
+   * cargo; `free` skips cost (slash command).
+   */
+  attemptFabricate(
+    blueprintId: string,
+    options?: { free?: boolean },
+  ):
+    | { ok: true; label: string }
+    | {
+        ok: false;
+        reason: TryFabricateReason | StructurePlacementReason | "no-world";
+      };
   toggleInventory(): void;
+  toggleGearMenu(): void;
   toggleBuildMenu(): void;
   toggleProfile(): void;
   /** Open a commander menu without toggling closed if already there. */
-  openMenu(menu: "inventory" | "build" | "profile"): void;
+  openMenu(menu: "inventory" | "gear" | "build" | "profile"): void;
   toggleCommandBar(): void;
   closeCommandBar(): void;
   dismissCommandBar(): void;
@@ -155,6 +172,7 @@ export interface GameplayDependencies {
   worldSystem: WorldSystem;
   ui: UI;
   faunaSystem: FaunaSystem;
+  structureSystem: StructureSystem;
   /** Static obstacles outside terrain collision. */
   getStaticColliders?: () => readonly SolidCollider[];
   onCaveCarved?: (brush: CaveBrush) => void;
@@ -165,7 +183,8 @@ export interface GameplayDependencies {
   ) => void;
   onPetChanged?: (entity: PlanetEntity) => void;
   onInventoryChanged?: (inventory: Inventory) => void;
-  onBuildsChanged?: (builds: readonly BuildId[]) => void;
+  onGearChanged?: (gear: readonly GearId[]) => void;
+  onStructuresChanged?: () => void;
   onProfileOpen?: () => void;
   /** Flush autosave when opening a commander menu or command bar. */
   onPersistCheckpoint?: () => void;
@@ -182,12 +201,14 @@ export function createGameplay({
   worldSystem,
   ui,
   faunaSystem,
+  structureSystem,
   getStaticColliders,
   onCaveCarved,
   onDepositChanged,
   onPetChanged,
   onInventoryChanged,
-  onBuildsChanged,
+  onGearChanged,
+  onStructuresChanged,
   onProfileOpen,
   onPersistCheckpoint,
 }: GameplayDependencies): Gameplay {
@@ -216,13 +237,14 @@ export function createGameplay({
     copper: 0,
     crystal: 0,
   };
-  let builds: BuildId[] = [];
-  let modifiers: BuildModifiers = resolveBuildModifiers(builds);
+  let gear: GearId[] = [];
+  let modifiers: GearModifiers = resolveGearModifiers(gear);
   const keys: KeyboardState = {};
 
   let active = true;
   let locked = false;
   let inventoryOpen = false;
+  let gearMenuOpen = false;
   let buildMenuOpen = false;
   let profileOpen = false;
   let commandBarOpen = false;
@@ -326,6 +348,7 @@ export function createGameplay({
 
     started = false;
     inventoryOpen = false;
+    gearMenuOpen = false;
     buildMenuOpen = false;
     profileOpen = false;
     commandBarOpen = false;
@@ -336,6 +359,7 @@ export function createGameplay({
     ui.setTargetLabel("");
     ui.setFuel(1);
     ui.setInventoryVisible(false);
+    ui.setGearMenuVisible(false);
     ui.setBuildMenuVisible(false);
     ui.setProfileVisible(false);
     ui.setCommandBarVisible(false);
@@ -368,48 +392,106 @@ export function createGameplay({
     ui.updateInventoryViews(inventory);
   }
 
-  function loadBuilds(next: readonly BuildId[]): void {
-    builds = [...next];
-    modifiers = resolveBuildModifiers(builds);
+  function loadGear(next: readonly GearId[]): void {
+    gear = [...next];
+    modifiers = resolveGearModifiers(gear);
+  }
+
+  function refreshGearMenu(): void {
+    ui.updateGearMenu({
+      inventory: cloneInventory(inventory),
+      gear,
+    });
   }
 
   function refreshBuildMenu(): void {
     ui.updateBuildMenu({
       inventory: cloneInventory(inventory),
-      builds,
+      structures: structureSystem.footprints(),
     });
   }
 
-  function attemptBuild(
-    buildId: string,
+  function attemptInstallGear(
+    gearId: string,
     options: { free?: boolean } = {},
-  ): { ok: true; label: string } | { ok: false; reason: TryBuildReason } {
-    const result = tryBuild(buildId, inventory, builds, options);
+  ): { ok: true; label: string } | { ok: false; reason: TryInstallGearReason } {
+    const result = tryInstallGear(gearId, inventory, gear, options);
     if (!result.ok) {
       return { ok: false, reason: result.reason };
     }
     for (const materialId of MATERIAL_ORDER) {
       inventory[materialId] = result.inventory[materialId];
     }
-    builds = result.builds;
-    modifiers = resolveBuildModifiers(builds);
+    gear = result.gear;
+    modifiers = resolveGearModifiers(gear);
     ui.updateInventoryViews(inventory);
     onInventoryChanged?.(cloneInventory(inventory));
-    onBuildsChanged?.(builds);
-    if (buildMenuOpen) refreshBuildMenu();
+    onGearChanged?.(gear);
+    if (gearMenuOpen) refreshGearMenu();
     return { ok: true, label: result.definition.label };
   }
 
+  function attemptFabricate(
+    blueprintId: string,
+    options: { free?: boolean } = {},
+  ):
+    | { ok: true; label: string }
+    | {
+        ok: false;
+        reason: TryFabricateReason | StructurePlacementReason | "no-world";
+      } {
+    const world = worldSystem.current;
+    if (world === null) {
+      return { ok: false, reason: "no-world" };
+    }
+
+    const fabricResult = tryFabricate(blueprintId, inventory, options);
+    if (!fabricResult.ok) {
+      return { ok: false, reason: fabricResult.reason };
+    }
+
+    const placeResult = structureSystem.place(
+      world,
+      fabricResult.definition.id,
+      {
+        x: player.position.x,
+        z: player.position.z,
+        yaw: player.yaw,
+      },
+    );
+    if (!placeResult.ok) {
+      return { ok: false, reason: placeResult.reason };
+    }
+
+    for (const materialId of MATERIAL_ORDER) {
+      inventory[materialId] = fabricResult.inventory[materialId];
+    }
+    ui.updateInventoryViews(inventory);
+    onInventoryChanged?.(cloneInventory(inventory));
+    onStructuresChanged?.();
+    if (buildMenuOpen) refreshBuildMenu();
+    if (gearMenuOpen) refreshGearMenu();
+    return { ok: true, label: fabricResult.definition.label };
+  }
+
   function anyOverlayOpen(): boolean {
-    return inventoryOpen || buildMenuOpen || profileOpen || commandBarOpen;
+    return (
+      inventoryOpen ||
+      gearMenuOpen ||
+      buildMenuOpen ||
+      profileOpen ||
+      commandBarOpen
+    );
   }
 
   function closeOverlays(): void {
     inventoryOpen = false;
+    gearMenuOpen = false;
     buildMenuOpen = false;
     profileOpen = false;
     commandBarOpen = false;
     ui.setInventoryVisible(false);
+    ui.setGearMenuVisible(false);
     ui.setBuildMenuVisible(false);
     ui.setProfileVisible(false);
     ui.setCommandBarVisible(false);
@@ -437,12 +519,18 @@ export function createGameplay({
   }
 
   /**
-   * Open one overlay (or none). Mutually exclusive with inventory / build /
-   * profile / command bar. Opening exits pointer lock. Closing with resume
-   * re-locks; Escape closes to Standby without re-locking.
+   * Open one overlay (or none). Mutually exclusive with inventory / gear /
+   * build / profile / command bar. Opening exits pointer lock. Closing with
+   * resume re-locks; Escape closes to Standby without re-locking.
    */
   function setOverlay(
-    next: "none" | "inventory" | "build" | "profile" | "command",
+    next:
+      | "none"
+      | "inventory"
+      | "gear"
+      | "build"
+      | "profile"
+      | "command",
     options: { resume?: boolean } = {},
   ): void {
     const wasOpen = anyOverlayOpen();
@@ -450,15 +538,18 @@ export function createGameplay({
     const willOpen = next !== "none";
 
     inventoryOpen = next === "inventory";
+    gearMenuOpen = next === "gear";
     buildMenuOpen = next === "build";
     profileOpen = next === "profile";
     commandBarOpen = next === "command";
 
     if (inventoryOpen) ui.updateInventory(inventory);
+    if (gearMenuOpen) refreshGearMenu();
     if (buildMenuOpen) refreshBuildMenu();
     if (profileOpen) onProfileOpen?.();
 
     ui.setInventoryVisible(inventoryOpen);
+    ui.setGearMenuVisible(gearMenuOpen);
     ui.setBuildMenuVisible(buildMenuOpen);
     ui.setProfileVisible(profileOpen);
     ui.setCommandBarVisible(commandBarOpen);
@@ -484,6 +575,11 @@ export function createGameplay({
     setOverlay(inventoryOpen ? "none" : "inventory");
   }
 
+  function toggleGearMenu(): void {
+    if (!started) return;
+    setOverlay(gearMenuOpen ? "none" : "gear");
+  }
+
   function toggleBuildMenu(): void {
     if (!started) return;
     setOverlay(buildMenuOpen ? "none" : "build");
@@ -494,7 +590,7 @@ export function createGameplay({
     setOverlay(profileOpen ? "none" : "profile");
   }
 
-  function openMenu(menu: "inventory" | "build" | "profile"): void {
+  function openMenu(menu: "inventory" | "gear" | "build" | "profile"): void {
     if (!started) return;
     setOverlay(menu);
   }
@@ -684,7 +780,7 @@ export function createGameplay({
     }
 
     const solids = collectNearbySolids(world);
-    const resolved = resolveCapsuleAgainstSolids(
+    let resolved = resolveCapsuleAgainstSolids(
       {
         x: player.position.x,
         y: player.position.y,
@@ -694,6 +790,21 @@ export function createGameplay({
       },
       solids,
     );
+    const shelterResolved = structureSystem.resolveWalls({
+      x: resolved.x,
+      y: resolved.y,
+      z: resolved.z,
+      radius: PLAYER_RADIUS,
+      eyeHeight,
+    });
+    resolved = {
+      x: shelterResolved.x,
+      y: shelterResolved.y,
+      z: shelterResolved.z,
+      correctionX: resolved.correctionX + shelterResolved.correctionX,
+      correctionY: resolved.correctionY + shelterResolved.correctionY,
+      correctionZ: resolved.correctionZ + shelterResolved.correctionZ,
+    };
     player.position.set(resolved.x, resolved.y, resolved.z);
     const slid = slideVelocityFromCorrection(
       player.velocity.x,
@@ -752,8 +863,13 @@ export function createGameplay({
         player.velocity.y = 0;
       }
     } else {
+      const terrainY = world.heightAt(player.position.x, player.position.z);
+      const floorY = structureSystem.floorSupportAt(
+        player.position.x,
+        player.position.z,
+      );
       const ground =
-        world.heightAt(player.position.x, player.position.z) + eyeHeight;
+        Math.max(terrainY, floorY ?? terrainY) + eyeHeight;
       const wasGrounded = player.grounded;
       if (player.position.y <= ground) {
         if (!wasGrounded && player.velocity.y < -9) Sound.thud();
@@ -1222,6 +1338,7 @@ export function createGameplay({
     if (event.code === "Space") event.preventDefault();
     keys[event.code] = true;
     if (event.code === "KeyI" && !event.repeat) toggleInventory();
+    if (event.code === "KeyG" && !event.repeat) toggleGearMenu();
     if (event.code === "KeyB" && !event.repeat) toggleBuildMenu();
     if (event.code === "KeyP" && !event.repeat) toggleProfile();
     if (event.code === "Enter" && !event.repeat) {
@@ -1309,9 +1426,11 @@ export function createGameplay({
     resetWorld,
     applySavedPose,
     loadInventory,
-    loadBuilds,
-    attemptBuild,
+    loadGear,
+    attemptInstallGear,
+    attemptFabricate,
     toggleInventory,
+    toggleGearMenu,
     toggleBuildMenu,
     toggleProfile,
     openMenu,

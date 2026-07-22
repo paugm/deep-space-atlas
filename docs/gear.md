@@ -1,60 +1,61 @@
-# Fabricator builds
+# Commander gear
 
-Players spend cargo to install permanent gear. Builds live on the **player
-profile** (not per-planet), stack their modifiers, and travel with the
-commander across worlds and campaign saves.
+Players spend cargo to install permanent upgrades. Gear lives on the **player
+profile** (not per-planet), stacks modifiers, and travels with the commander
+across worlds and campaign saves.
 
-Cargo (**I**) stays materials-only. The **Build Bay** (**B**) is where recipes
-and installed gear are shown. Cargo, Build, and Profile share a tab strip so
-you can move between them without closing.
+Cargo (**I**) stays materials-only. **Gear** (**G**) is where upgrade recipes
+and installed loadout are shown. **Build** (**B**) is separate: field
+blueprints for placeable structures (see [`blueprints.md`](blueprints.md)).
+Cargo, Gear, Build, and Profile share a tab strip.
 
 ## Player flow
 
 1. Gather materials into cargo.
-2. Press **B** to open the Build Bay.
-3. **AVAILABLE** lists recipes you do not own yet (costs, prerequisites, BUILD).
+2. Press **G** to open Gear.
+3. **AVAILABLE** lists recipes you do not own yet (costs, prerequisites, INSTALL).
 4. **INSTALLED** lists gear already on the profile.
-5. BUILD spends cargo once; the id is stored forever on that profile.
+5. INSTALL spends cargo once; the id is stored forever on that profile.
 
-Playtesters can skip cargo with `/build <token>` or install the full catalog
-with `/gimme everything` (see [`commands.md`](commands.md)). That installs the
-same profile entry and applies the same modifiers.
+Playtesters can skip cargo with `/gear <token>` or install the full catalog
+with `/gimme everything` (see [`commands.md`](commands.md)).
 
 ## Architecture
 
 ```text
-js/builds.ts          catalog, costs, tryBuild, resolveBuildModifiers
-player-profile.ts     profile.builds: BuildId[]  (v3+)
+js/cargo-cost.ts      shared afford / deduct / format cost helpers
+js/gear.ts            catalog, tryInstallGear, resolveGearModifiers
+player-profile.ts     profile.gear: GearId[]  (v4+)
 gameplay.ts           applies modifiers (jetpack, mining, dig, mobility, rover)
-ui.ts + #buildOverlay Build Bay DOM
-commands/builtins.ts  /build <token> · /gimme everything
-main.ts               profile sync + host.buildItem
+ui.ts + #gearOverlay  Gear menu DOM
+commands/builtins.ts  /gear <token> · /gimme everything
+main.ts               profile sync + host.installGear
 ```
 
 | Concern | Owner |
 | --- | --- |
-| Recipe table | `BUILD_DEFINITIONS` / `BUILD_ORDER` in `js/builds.ts` |
-| Purchase rules | `tryBuild` (afford, prerequisites, already owned) |
-| Live stats | `resolveBuildModifiers(builds)` → `BuildModifiers` |
-| Persistence | `PlayerProfile.builds`, sealed with the profile checksum |
-| Menu | `ui.updateBuildMenu` from gameplay inventory + builds |
+| Recipe table | `GEAR_DEFINITIONS` / `GEAR_ORDER` in `js/gear.ts` |
+| Purchase rules | `tryInstallGear` (afford, prerequisites, already owned) |
+| Live stats | `resolveGearModifiers(gear)` → `GearModifiers` |
+| Persistence | `PlayerProfile.gear`, sealed with the profile checksum |
+| Menu | `ui.updateGearMenu` from gameplay inventory + gear |
 
-World and UI never invent recipes. Add definitions in `builds.ts`, then wire
-effects only through `resolveBuildModifiers` and the gameplay/world call sites
-that read those modifiers.
+World and UI never invent recipes. Add definitions in `gear.ts`, then wire
+effects only through `resolveGearModifiers` and the gameplay call sites that
+read those modifiers.
 
-## How to define a build
+## How to define gear
 
-1. Add an id to the `BuildId` union in `js/builds.ts`.
-2. Add a `BuildDefinition` to `BUILD_DEFINITIONS`:
+1. Add an id to the `GearId` union in `js/gear.ts`.
+2. Add a `GearDefinition` to `GEAR_DEFINITIONS`:
 
 ```ts
 "example-coil": {
   id: "example-coil",
-  token: "example-coil",   // /build example-coil
+  token: "example-coil",   // /gear example-coil
   label: "Example Coil",
   blurb: "Short player-facing effect.",
-  category: "jetpack",     // or "extractor"
+  category: "jetpack",
   cost: { iron: 20, copper: 5 },
   requires: ["thruster-coil-i"], // optional
   effects: [
@@ -63,16 +64,16 @@ that read those modifiers.
 },
 ```
 
-3. Append the id to `BUILD_ORDER` (menu + docs order).
-4. Prefer an existing `BuildEffect` kind. If you need a new kind, extend the
-   `BuildEffect` union, handle it in `resolveBuildModifiers` with an exhaustive
-   `never` default, and apply the resulting field in gameplay (or world) where
-   the base constant was used.
-5. Cover costs / prerequisites / modifiers in `tests/builds.test.ts`.
+3. Append the id to `GEAR_ORDER` (menu + docs order).
+4. Prefer an existing `GearEffect` kind. If you need a new kind, extend the
+   `GearEffect` union, handle it in `resolveGearModifiers` with an exhaustive
+   `never` default, and apply the resulting field in gameplay where the base
+   constant was used.
+5. Cover costs / prerequisites / modifiers in `tests/gear.test.ts`.
 6. Document the recipe in this file’s catalog table and mention the system in
    [`README.md`](README.md) if architecture or controls change.
-7. `/build <token>` picks up new tokens automatically via
-   `buildDefinitionFromToken` — no per-item command registration.
+7. `/gear <token>` picks up new tokens automatically via
+   `gearDefinitionFromToken` — no per-item command registration.
 
 ### Effect kinds
 
@@ -91,19 +92,20 @@ that read those modifiers.
 | `waterDragMult` | multiply | Underwater vertical drag (lower = less drag) |
 | `roverSpeedMult` | multiply | Wheeled rover drive speed |
 
-Multipliers start at `1` and multiply across owned builds. Dig scale multiplies
+Multipliers start at `1` and multiply across owned gear. Dig scale multiplies
 both radius and length from `CAVE_DIG_*` bases.
 
 ### Prerequisites
 
-`requires` lists build ids that must already be installed for a **paid** Build
-Bay purchase. `/build` with `free: true` skips cost and prerequisites so
+`requires` lists gear ids that must already be installed for a **paid** Gear
+menu purchase. `/gear` with `free: true` skips cost and prerequisites so
 playtesters can force a single upgrade.
 
 ### Profile version
 
-Installed builds are `PLAYER_PROFILE_VERSION` **3**. Loading v1 or v2 profiles
-upgrades in memory with `builds: []`. Unknown build ids fail parse (strict).
+Installed gear is `PLAYER_PROFILE_VERSION` **4** (`gear`). Loading v1 or v2
+profiles upgrades in memory with `gear: []`. Loading v3 profiles migrates the
+legacy `builds` field to `gear`. Unknown gear ids fail parse (strict).
 
 ## Current catalog
 

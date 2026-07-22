@@ -69,3 +69,14 @@ export const FAUNA_SPECIES: readonly FaunaSpeciesId[] = Object.keys(
 export function isFaunaSpeciesId(value: unknown): value is FaunaSpeciesId {
   return typeof value === "string" && value in FAUNA_DEFINITIONS;
 }
+
+/** Uniform pick among walker species (`random` in [0, 1)). */
+export function pickRandomFaunaSpecies(random: () => number): FaunaSpeciesId {
+  const roll = random();
+  const unit = Number.isFinite(roll) ? ((roll % 1) + 1) % 1 : 0;
+  const index = Math.min(
+    FAUNA_SPECIES.length - 1,
+    Math.floor(unit * FAUNA_SPECIES.length),
+  );
+  return FAUNA_SPECIES[index]!;
+}

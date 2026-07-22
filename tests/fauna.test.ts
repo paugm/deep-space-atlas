@@ -11,6 +11,7 @@ import {
   formatPetDistance,
   parsePetEntityData,
   parsePetPose,
+  pickRandomFaunaSpecies,
   planFauna,
   stepFollow,
   upsertPetEntity,
@@ -250,6 +251,21 @@ describe("pet entity save", () => {
       z: 2,
       yaw: 1,
     });
+  });
+});
+
+describe("pickRandomFaunaSpecies", () => {
+  it("returns only known species across the unit interval", () => {
+    for (let step = 0; step < FAUNA_SPECIES.length; step += 1) {
+      const species = pickRandomFaunaSpecies(
+        () => (step + 0.5) / FAUNA_SPECIES.length,
+      );
+      expect(FAUNA_SPECIES).toContain(species);
+    }
+    expect(pickRandomFaunaSpecies(() => 0)).toBe(FAUNA_SPECIES[0]);
+    expect(pickRandomFaunaSpecies(() => 0.9999)).toBe(
+      FAUNA_SPECIES[FAUNA_SPECIES.length - 1],
+    );
   });
 });
 

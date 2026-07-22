@@ -85,6 +85,8 @@ describe("builtin commands", () => {
     travelToSeed: ReturnType<typeof vi.fn>;
     toggleMute: ReturnType<typeof vi.fn>;
     buildItem: ReturnType<typeof vi.fn>;
+    installGear: ReturnType<typeof vi.fn>;
+    adoptPet: ReturnType<typeof vi.fn>;
   } {
     const spawnSpaceshipAhead = vi.fn(async (_meters: number) => undefined);
     const spawnRoverAhead = vi.fn(
@@ -97,6 +99,12 @@ describe("builtin commands", () => {
       return muted;
     });
     const buildItem = vi.fn((token: string) => {
+      if (token === "beacon") {
+        return { ok: true as const, label: "Survey Beacon" };
+      }
+      return { ok: false as const, reason: "unknown" as const };
+    });
+    const installGear = vi.fn((token: string) => {
       if (token === "thruster-coil-i") {
         return { ok: true as const, label: "Thruster Coil I" };
       }
@@ -105,6 +113,10 @@ describe("builtin commands", () => {
       }
       return { ok: false as const, reason: "unknown" as const };
     });
+    const adoptPet = vi.fn(async () => ({
+      ok: true as const,
+      label: "Panda",
+    }));
     const host: CommandHost = {
       hasPlanetWorld: () => true,
       currentSeed: () => 0x11111111,
@@ -113,6 +125,8 @@ describe("builtin commands", () => {
       travelToSeed,
       toggleMute,
       buildItem,
+      installGear,
+      adoptPet,
       ...overrides,
     };
     return {
@@ -122,6 +136,8 @@ describe("builtin commands", () => {
       travelToSeed,
       toggleMute,
       buildItem,
+      installGear,
+      adoptPet,
     };
   }
 
@@ -241,23 +257,19 @@ describe("builtin commands", () => {
     expect(toggleMute).toHaveBeenCalledTimes(2);
   });
 
-  it("installs fabricator builds and rejects unknown or owned tokens", async () => {
+  it("fabricates field structures and rejects unknown blueprints", async () => {
     const { host, buildItem } = createHost();
     const registry = createCommandRegistry(createBuiltinCommands(host));
 
-    await expect(registry.dispatch("/build thruster-coil-i")).resolves.toEqual({
+    await expect(registry.dispatch("/build beacon")).resolves.toEqual({
       ok: true,
-      message: "INSTALLED · THRUSTER COIL I",
+      message: "FABRICATED · SURVEY BEACON",
     });
-    expect(buildItem).toHaveBeenCalledWith("thruster-coil-i");
+    expect(buildItem).toHaveBeenCalledWith("beacon");
 
-    await expect(registry.dispatch("/build focus-lens-i")).resolves.toEqual({
-      ok: false,
-      message: "ALREADY INSTALLED",
-    });
     await expect(registry.dispatch("/build nope")).resolves.toEqual({
       ok: false,
-      message: "UNKNOWN SCHEMATIC",
+      message: "UNKNOWN BLUEPRINT",
     });
     await expect(registry.dispatch("/build")).resolves.toEqual({
       ok: false,
@@ -265,23 +277,47 @@ describe("builtin commands", () => {
     });
   });
 
-  it("installs the full fabricator loadout with /gimme everything", async () => {
+  it("installs gear and rejects unknown or owned tokens", async () => {
+    const { host, installGear } = createHost();
+    const registry = createCommandRegistry(createBuiltinCommands(host));
+
+    await expect(registry.dispatch("/gear thruster-coil-i")).resolves.toEqual({
+      ok: true,
+      message: "INSTALLED · THRUSTER COIL I",
+    });
+    expect(installGear).toHaveBeenCalledWith("thruster-coil-i");
+
+    await expect(registry.dispatch("/gear focus-lens-i")).resolves.toEqual({
+      ok: false,
+      message: "ALREADY INSTALLED",
+    });
+    await expect(registry.dispatch("/gear nope")).resolves.toEqual({
+      ok: false,
+      message: "UNKNOWN SCHEMATIC",
+    });
+    await expect(registry.dispatch("/gear")).resolves.toEqual({
+      ok: false,
+      message: "INCOMPLETE SIGNAL",
+    });
+  });
+
+  it("installs the full gear loadout with /gimme everything", async () => {
     const owned = new Set<string>();
-    const buildItem = vi.fn((token: string) => {
+    const installGear = vi.fn((token: string) => {
       if (owned.has(token)) {
         return { ok: false as const, reason: "already-owned" as const };
       }
       owned.add(token);
       return { ok: true as const, label: token };
     });
-    const { host } = createHost({ buildItem });
+    const { host } = createHost({ installGear });
     const registry = createCommandRegistry(createBuiltinCommands(host));
 
     await expect(registry.dispatch("/gimme everything")).resolves.toEqual({
       ok: true,
       message: "FULL LOADOUT · 14 INSTALLED",
     });
-    expect(buildItem).toHaveBeenCalledTimes(14);
+    expect(installGear).toHaveBeenCalledTimes(14);
 
     await expect(registry.dispatch("/gimme everything")).resolves.toEqual({
       ok: true,
@@ -292,6 +328,51 @@ describe("builtin commands", () => {
       message: "INCOMPLETE SIGNAL",
     });
     await expect(registry.dispatch("/gimme stuff")).resolves.toEqual({
+      ok: false,
+      message: "INCOMPLETE SIGNAL",
+    });
+  });
+
+  it("adopts a random pet and rejects when one already exists", async () => {
+    const adoptPet = vi.fn(async (): Promise<
+      | { ok: true; label: string }
+      | { ok: false; reason: "has-pet" | "no-world" }
+    > => ({
+      ok: true,
+      label: "Yeti",
+    }));
+    const { host } = createHost({ adoptPet });
+    const registry = createCommandRegistry(createBuiltinCommands(host));
+
+    await expect(registry.dispatch("/adopt pet")).resolves.toEqual({
+      ok: true,
+      message: "COMPANION BONDED · YETI",
+    });
+    expect(adoptPet).toHaveBeenCalledTimes(1);
+
+    adoptPet.mockResolvedValueOnce({
+      ok: false,
+      reason: "has-pet",
+    });
+    await expect(registry.dispatch("/adopt pet")).resolves.toEqual({
+      ok: false,
+      message: "ALREADY HAVE A COMPANION",
+    });
+
+    adoptPet.mockResolvedValueOnce({
+      ok: false,
+      reason: "no-world",
+    });
+    await expect(registry.dispatch("/adopt pet")).resolves.toEqual({
+      ok: false,
+      message: "NO PLANET UNDERFOOT — LAND FIRST",
+    });
+
+    await expect(registry.dispatch("/adopt")).resolves.toEqual({
+      ok: false,
+      message: "INCOMPLETE SIGNAL",
+    });
+    await expect(registry.dispatch("/adopt dog")).resolves.toEqual({
       ok: false,
       message: "INCOMPLETE SIGNAL",
     });

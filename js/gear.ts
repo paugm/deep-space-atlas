@@ -1,9 +1,16 @@
 /**
- * Fabricator catalog: buildable gear, costs, and stacked modifiers.
+ * Commander gear catalog: permanent upgrades, costs, and stacked modifiers.
  * Pure — no DOM or Three.js. Installed ids live on the player profile.
  */
 
-import type { Inventory, MaterialId } from "./config.ts";
+import type { CargoCost } from "./cargo-cost.ts";
+import {
+  canAffordCost,
+  cloneInventory,
+  deductCost,
+  formatCargoCost,
+} from "./cargo-cost.ts";
+import type { Inventory } from "./config.ts";
 import {
   CAVE_DIG_LENGTH,
   CAVE_DIG_RADIUS,
@@ -11,8 +18,6 @@ import {
   JET_MAX_VERTICAL_SPEED,
   JET_RECHARGE_SECONDS,
   JUMP_VELOCITY,
-  MATERIAL_ORDER,
-  MATERIALS,
   MINING_RANGE,
   MINING_TIME,
   ROVER_DRIVE_SPEED,
@@ -22,23 +27,7 @@ import {
   WATER_VERTICAL_DRAG,
 } from "./config.ts";
 
-function createEmptyInventory(): Inventory {
-  const inventory = {} as Inventory;
-  for (const materialId of MATERIAL_ORDER) {
-    inventory[materialId] = 0;
-  }
-  return inventory;
-}
-
-function cloneInventory(inventory: Inventory): Inventory {
-  const next = createEmptyInventory();
-  for (const materialId of MATERIAL_ORDER) {
-    next[materialId] = inventory[materialId];
-  }
-  return next;
-}
-
-export type BuildId =
+export type GearId =
   | "thruster-coil-i"
   | "thruster-coil-ii"
   | "capacitor-lattice"
@@ -54,15 +43,15 @@ export type BuildId =
   | "mass-dampers"
   | "drive-kit-i";
 
-export type BuildCategory = "jetpack" | "extractor" | "mobility" | "rover";
+export type GearCategory = "jetpack" | "extractor" | "mobility" | "rover";
 
-export type BuildCost = Partial<Record<MaterialId, number>>;
+export type GearCost = CargoCost;
 
 /**
  * Stacked modifiers. Multipliers multiply; additives sum. Dig scale multiplies
  * both radius and length from the base cave brush constants.
  */
-export type BuildEffect =
+export type GearEffect =
   | { kind: "jetBurnMult"; value: number }
   | { kind: "jetRechargeMult"; value: number }
   | { kind: "jetMaxSpeedAdd"; value: number }
@@ -76,20 +65,20 @@ export type BuildEffect =
   | { kind: "waterDragMult"; value: number }
   | { kind: "roverSpeedMult"; value: number };
 
-export interface BuildDefinition {
-  id: BuildId;
+export interface GearDefinition {
+  id: GearId;
   /** Slash-command token; usually matches `id`. */
   token: string;
   label: string;
   blurb: string;
-  category: BuildCategory;
-  cost: BuildCost;
-  effects: readonly BuildEffect[];
+  category: GearCategory;
+  cost: GearCost;
+  effects: readonly GearEffect[];
   /** Must already be installed before this recipe unlocks. */
-  requires?: readonly BuildId[];
+  requires?: readonly GearId[];
 }
 
-export interface BuildModifiers {
+export interface GearModifiers {
   jetBurnSeconds: number;
   jetRechargeSeconds: number;
   jetMaxVerticalSpeed: number;
@@ -106,22 +95,22 @@ export interface BuildModifiers {
   roverDriveSpeed: number;
 }
 
-export type TryBuildReason =
+export type TryInstallGearReason =
   | "unknown"
   | "already-owned"
   | "missing-prerequisite"
   | "cannot-afford";
 
-export type TryBuildResult =
+export type TryInstallGearResult =
   | {
       ok: true;
       inventory: Inventory;
-      builds: BuildId[];
-      definition: BuildDefinition;
+      gear: GearId[];
+      definition: GearDefinition;
     }
-  | { ok: false; reason: TryBuildReason };
+  | { ok: false; reason: TryInstallGearReason };
 
-export const BUILD_DEFINITIONS: Record<BuildId, BuildDefinition> = {
+export const GEAR_DEFINITIONS: Record<GearId, GearDefinition> = {
   "thruster-coil-i": {
     id: "thruster-coil-i",
     token: "thruster-coil-i",
@@ -263,7 +252,7 @@ export const BUILD_DEFINITIONS: Record<BuildId, BuildDefinition> = {
 };
 
 /** Catalog order for menus and docs. */
-export const BUILD_ORDER: readonly BuildId[] = [
+export const GEAR_ORDER: readonly GearId[] = [
   "thruster-coil-i",
   "thruster-coil-ii",
   "capacitor-lattice",
@@ -280,19 +269,19 @@ export const BUILD_ORDER: readonly BuildId[] = [
   "drive-kit-i",
 ];
 
-const BUILD_ID_SET = new Set<string>(BUILD_ORDER);
+const GEAR_ID_SET = new Set<string>(GEAR_ORDER);
 
-export function isBuildId(value: unknown): value is BuildId {
-  return typeof value === "string" && BUILD_ID_SET.has(value);
+export function isGearId(value: unknown): value is GearId {
+  return typeof value === "string" && GEAR_ID_SET.has(value);
 }
 
-export function buildDefinitionFromToken(
+export function gearDefinitionFromToken(
   token: string,
-): BuildDefinition | null {
+): GearDefinition | null {
   const normalized = token.trim().toLowerCase();
   if (normalized.length === 0) return null;
-  for (const id of BUILD_ORDER) {
-    const definition = BUILD_DEFINITIONS[id];
+  for (const id of GEAR_ORDER) {
+    const definition = GEAR_DEFINITIONS[id];
     if (definition.token === normalized || definition.id === normalized) {
       return definition;
     }
@@ -300,58 +289,30 @@ export function buildDefinitionFromToken(
   return null;
 }
 
-export function cloneBuilds(builds: readonly BuildId[]): BuildId[] {
-  const next: BuildId[] = [];
-  const seen = new Set<BuildId>();
-  for (const id of builds) {
-    if (!isBuildId(id) || seen.has(id)) continue;
+export function cloneGear(gear: readonly GearId[]): GearId[] {
+  const next: GearId[] = [];
+  const seen = new Set<GearId>();
+  for (const id of gear) {
+    if (!isGearId(id) || seen.has(id)) continue;
     seen.add(id);
     next.push(id);
   }
   return next;
 }
 
-export function hasBuild(
-  builds: readonly BuildId[],
-  buildId: BuildId,
-): boolean {
-  return builds.includes(buildId);
+export function hasGear(gear: readonly GearId[], gearId: GearId): boolean {
+  return gear.includes(gearId);
 }
 
 export function missingPrerequisites(
-  definition: BuildDefinition,
-  owned: readonly BuildId[],
-): BuildId[] {
+  definition: GearDefinition,
+  owned: readonly GearId[],
+): GearId[] {
   if (definition.requires === undefined) return [];
   return definition.requires.filter((id) => !owned.includes(id));
 }
 
-export function canAffordBuild(
-  cost: BuildCost,
-  inventory: Inventory,
-): boolean {
-  for (const materialId of MATERIAL_ORDER) {
-    const amount = cost[materialId];
-    if (amount === undefined || amount <= 0) continue;
-    if (inventory[materialId] < amount) return false;
-  }
-  return true;
-}
-
-export function deductBuildCost(
-  cost: BuildCost,
-  inventory: Inventory,
-): Inventory {
-  const next = cloneInventory(inventory);
-  for (const materialId of MATERIAL_ORDER) {
-    const amount = cost[materialId];
-    if (amount === undefined || amount <= 0) continue;
-    next[materialId] -= amount;
-  }
-  return next;
-}
-
-export function baseBuildModifiers(): BuildModifiers {
+export function baseGearModifiers(): GearModifiers {
   return {
     jetBurnSeconds: JET_BURN_SECONDS,
     jetRechargeSeconds: JET_RECHARGE_SECONDS,
@@ -370,11 +331,11 @@ export function baseBuildModifiers(): BuildModifiers {
   };
 }
 
-/** Resolve stacked modifiers from installed builds (unknown ids ignored). */
-export function resolveBuildModifiers(
-  builds: readonly BuildId[],
-): BuildModifiers {
-  const modifiers = baseBuildModifiers();
+/** Resolve stacked modifiers from installed gear (unknown ids ignored). */
+export function resolveGearModifiers(
+  gear: readonly GearId[],
+): GearModifiers {
+  const modifiers = baseGearModifiers();
   let jetBurnMult = 1;
   let jetRechargeMult = 1;
   let miningTimeMult = 1;
@@ -385,9 +346,9 @@ export function resolveBuildModifiers(
   let waterDragMult = 1;
   let roverSpeedMult = 1;
 
-  for (const id of builds) {
-    if (!isBuildId(id)) continue;
-    for (const effect of BUILD_DEFINITIONS[id].effects) {
+  for (const id of gear) {
+    if (!isGearId(id)) continue;
+    for (const effect of GEAR_DEFINITIONS[id].effects) {
       switch (effect.kind) {
         case "jetBurnMult":
           jetBurnMult *= effect.value;
@@ -427,7 +388,7 @@ export function resolveBuildModifiers(
           break;
         default: {
           const exhaustive: never = effect;
-          throw new Error(`Unknown build effect: ${String(exhaustive)}`);
+          throw new Error(`Unknown gear effect: ${String(exhaustive)}`);
         }
       }
     }
@@ -448,20 +409,20 @@ export function resolveBuildModifiers(
 }
 
 /**
- * Attempt to install a build. With `free: true` (slash command), skips cargo
+ * Attempt to install gear. With `free: true` (slash command), skips cargo
  * cost and prerequisites; still rejects unknown / already-owned ids.
  */
-export function tryBuild(
-  buildId: string,
+export function tryInstallGear(
+  gearId: string,
   inventory: Inventory,
-  owned: readonly BuildId[],
+  owned: readonly GearId[],
   options: { free?: boolean } = {},
-): TryBuildResult {
-  if (!isBuildId(buildId)) {
+): TryInstallGearResult {
+  if (!isGearId(gearId)) {
     return { ok: false, reason: "unknown" };
   }
-  const definition = BUILD_DEFINITIONS[buildId];
-  if (owned.includes(buildId)) {
+  const definition = GEAR_DEFINITIONS[gearId];
+  if (owned.includes(gearId)) {
     return { ok: false, reason: "already-owned" };
   }
 
@@ -471,30 +432,21 @@ export function tryBuild(
     if (missing.length > 0) {
       return { ok: false, reason: "missing-prerequisite" };
     }
-    if (!canAffordBuild(definition.cost, inventory)) {
+    if (!canAffordCost(definition.cost, inventory)) {
       return { ok: false, reason: "cannot-afford" };
     }
   }
 
   const nextInventory = free
     ? cloneInventory(inventory)
-    : deductBuildCost(definition.cost, inventory);
-  const nextBuilds = cloneBuilds([...owned, buildId]);
+    : deductCost(definition.cost, inventory);
+  const nextGear = cloneGear([...owned, gearId]);
   return {
     ok: true,
     inventory: nextInventory,
-    builds: nextBuilds,
+    gear: nextGear,
     definition,
   };
 }
 
-/** Cost lines for UI, ordered like cargo materials. */
-export function formatBuildCost(cost: BuildCost): string {
-  const parts: string[] = [];
-  for (const materialId of MATERIAL_ORDER) {
-    const amount = cost[materialId];
-    if (amount === undefined || amount <= 0) continue;
-    parts.push(`${amount} ${MATERIALS[materialId].label}`);
-  }
-  return parts.join(" · ");
-}
+export { canAffordCost, formatCargoCost };

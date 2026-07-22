@@ -3,7 +3,8 @@
 This is the working reference for the game. The public GitHub page is
 [`README.md`](../README.md); contributor notes are in
 [`CONTRIBUTING.md`](../CONTRIBUTING.md), slash commands are in
-[`commands.md`](commands.md), and the fabricator is in [`builds.md`](builds.md).
+[`commands.md`](commands.md), gear is in [`gear.md`](gear.md), and field
+blueprints are in [`blueprints.md`](blueprints.md).
 
 When you change architecture, modules, saves, world generation, or workflows,
 update this file too. If a feature count changes, update the root README spec
@@ -57,8 +58,10 @@ setup happen once the repo is public.
 | Fauna | `js/fauna/` | Wild walkers, tame/follow, pet entities |
 | Vehicles | `js/vehicles/` | Seeded rovers, board/drive, rover entities |
 | Planet save | `js/planet-save.ts` | Per-seed patches in IndexedDB |
-| Profile | `js/player-profile.ts` | Callsign, cargo, playtime, audio mute, fabricator builds, visits |
-| Builds | `js/builds.ts` | Fabricator catalog, costs, `tryBuild`, stacked modifiers (pure) |
+| Profile | `js/player-profile.ts` | Callsign, cargo, playtime, audio mute, gear, visits |
+| Gear | `js/gear.ts` | Permanent upgrade catalog, costs, stacked modifiers (pure) |
+| Blueprints | `js/blueprints.ts` | Placeable structure recipes and fabricate cost (pure) |
+| Structures | `js/structures/` | Beacons and other field builds: place, mesh, entities |
 | Campaign file | `js/game-save.ts` | Portable `.deepspaceatlas` |
 | DB | `js/save-db.ts` | Shared IndexedDB open (`planets` + `profile`) |
 | UI | `js/ui.ts` | DOM only; callbacks to `main.ts` |
@@ -86,19 +89,20 @@ cockpit takeoff camera ride, and `cinema.ts` draws the black-fade overlay.
 
 ```text
 config.ts
-  ├── js/builds.ts · js/world/* · gameplay.ts · collision.ts · water.ts
+  ├── js/cargo-cost.ts · js/gear.ts · js/blueprints.ts · js/world/* · gameplay.ts · collision.ts · water.ts
   ├── planet-save.ts · player-profile.ts · game-save.ts · ui.ts · js/commands/*
 
 audio.ts (+ catalog / rules) ──> gameplay.ts / js/space/* / cinema.ts
 world.ts ───────> gameplay.ts · js/space/*   (re-export / types)
-js/builds.ts ──> gameplay.ts · player-profile.ts · ui.ts · js/commands/*
+js/gear.ts ──> gameplay.ts · player-profile.ts · ui.ts · js/commands/*
+js/blueprints.ts · js/structures/* ──> gameplay.ts · planet-save.ts · ui.ts · js/commands/*
 
 planet-save.ts ──(type)──> world.ts
 js/world/* ──(type)──> planet-save.ts
 save-db.ts / game-save.ts ──> planet-save.ts · player-profile.ts
-js/commands/* ──> planet-save.ts (seed parse only) · builds.ts
+js/commands/* ──> planet-save.ts (seed parse only) · gear.ts · blueprints.ts
 
-main.ts wires world · gameplay · space · saves · ui · commands
+main.ts wires world · gameplay · space · structures · saves · ui · commands
 ui.ts <── callbacks ── main.ts
 ```
 
@@ -117,7 +121,8 @@ through the injected `worldSystem`.
    apply deposits, index saved cave brushes, and initialize the cave worker
    without building every saved cave mesh.
 5. Sync fauna and the pet. Sync rovers from `entities[]` or the seeded
-   `roverPlan`; place the parked ship from `entities[]` or its default pad.
+   `roverPlan`; sync field structures from `entities[]`; place the parked ship
+   from `entities[]` or its default pad.
 6. Reset player and mining. Restore the saved pose when present, then cargo
    from the profile.
 7. Record the visit on the profile.
@@ -130,9 +135,9 @@ The game modes are `planet | space | landing | launch`. One mode simulates and
 renders on the shared CRT renderer each frame. Input is gated by
 `gameplay.setActive` and `spaceSystem.setActive`.
 
-On `planet`, update gameplay, fauna and the pet compass, rover driving, and
-day/night (using camera Y underwater). Then handle the aim, mine, and board
-prompt before rendering the planet.
+On `planet`, update gameplay, fauna and the nav compass (nearest structure,
+else pet), rover driving, and day/night (using camera Y underwater). Then handle
+the aim, mine, and board prompt before rendering the planet.
 
 On `space` and `landing`, fly, stream proxies, scan, and render space. Landing
 freezes the camera while the hull leaves in third person. On `launch`, the
@@ -239,16 +244,18 @@ This holds legacy surface-height edits, compact cave brushes, and remaining
 deposits by stable id (`type:qx:qz`). Its `entities[]`
 also holds pets (`kind: "pet"`: species + last ground pose), the commander
 (`kind: "player"`: x/y/z/yaw + pitch/fuel in `data`), the parked survey vessel
-pad (`kind: "parked-ship"`: x/z/yaw), and wheeled rovers (`kind: "rover"`:
-unique id per instance, x/z/yaw + `data.roverKind`).
+pad (`kind: "parked-ship"`: x/z/yaw), wheeled rovers (`kind: "rover"`:
+unique id per instance, x/z/yaw + `data.roverKind`), and field structures
+(`kind: "structure"`: unique id, x/z/yaw + `data.blueprintId`).
 
-`PlanetEntity.kind` is the `"pet" | "player" | "parked-ship" | "rover"` union.
-Singletons (`pet`, `player`, `parked-ship`) use the kind as their id. Rovers use
-stable ids such as `rover-0` and `rover-spawn-N`. The shared accessors are
-`findPlanetEntity` and `upsertPlanetEntity`. Loading always runs `build(seed)`,
-then async `applyPlanetPatch`; `main` then restores fauna, rovers, ship, and
-player from `entities[]`. When no rover is saved, rovers come from the seeded
-`roverPlan`.
+`PlanetEntity.kind` is the
+`"pet" | "player" | "parked-ship" | "rover" | "structure"` union.
+Singletons (`pet`, `player`, `parked-ship`) use the kind as their id. Rovers and
+structures use stable ids such as `rover-0` / `structure-0`. The shared
+accessors are `findPlanetEntity` and `upsertPlanetEntity`. Loading always runs
+`build(seed)`, then async `applyPlanetPatch`; `main` then restores fauna,
+rovers, structures, ship, and player from `entities[]`. When no rover is saved,
+rovers come from the seeded `roverPlan`.
 
 #### Surface encoding
 
@@ -270,7 +277,7 @@ cheaply, but are not meshed during load.
 
 Writes flush after a 400 ms debounce, when the player leaves a planet (travel
 or launch), on pointer unlock (Standby / Escape / click-away), when opening
-Cargo / Build / Profile / the command bar, every 45 s while the pointer is
+Cargo / Gear / Build / Profile / the command bar, every 45 s while the pointer is
 locked in planet or space mode, and on `visibilitychange → hidden` plus
 `pagehide`. Hide events are the last reliable times when closing a tab;
 async IndexedDB writes started in `beforeunload` are killed. Every flush
@@ -285,14 +292,16 @@ in planet patches. The space cockpit pose is not persisted.
 #### Profile
 
 The profile holds callsign, cargo, playtime, master audio mute, installed
-fabricator builds, and visited planets. Mute is off by default, so sound is on;
-**M** / `/mute` saves the choice here. Builds are permanent profile upgrades
-(see [`builds.md`](builds.md)); **B** opens the Build Bay. Cargo (**I**), Build
-(**B**), and Profile (**P**) share a tab strip so you can jump between them
-without closing. The profile lists companions (visited worlds with `hasPet`)
-above the visited-planet index; pets remain planet-bound in `entities[]`. The
-profile document version is `PLAYER_PROFILE_VERSION` (3). Loading v1 adds
-`muted: false` and empty `builds`; loading v2 adds empty `builds`.
+gear, and visited planets. Mute is off by default, so sound is on;
+**M** / `/mute` saves the choice here. Gear is permanent profile upgrades
+(see [`gear.md`](gear.md)); **G** opens Gear. Field structures use **B** /
+Build (see [`blueprints.md`](blueprints.md)). Cargo (**I**), Gear (**G**),
+Build (**B**), and Profile (**P**) share a tab strip so you can jump between
+them without closing. The profile lists companions (visited worlds with
+`hasPet`) above the visited-planet index; pets remain planet-bound in
+`entities[]`. The profile document version is `PLAYER_PROFILE_VERSION` (4).
+Loading v1 adds `muted: false` and empty `gear`; loading v2 adds empty `gear`;
+loading v3 migrates `builds` → `gear`.
 
 #### Portable file (`.deepspaceatlas`, `v: 2`)
 
@@ -314,8 +323,8 @@ migration shims.
 ### Mining
 
 Hold extract on one target to fill a progress cycle. Retargeting or releasing
-resets it. Cycle time and reach follow fabricator modifiers when builds are
-installed (see [`builds.md`](builds.md)).
+resets it. Cycle time and reach follow gear modifiers when upgrades are
+installed (see [`gear.md`](gear.md)).
 
 | Target | Yield |
 | --- | --- |
@@ -335,10 +344,24 @@ About one fifth of seeds get `hasFauna` and 1–3 wild walkers. Hold LMB on one
 to tame it. A planet can have one pet. It walks toward you at a fixed pace
 slower than player walk and never teleports. Its planet save stores its species
 and last ground pose, then restores it with a short greeting on return.
+Playtesters can force a random companion with `/adopt pet` (see
+[`commands.md`](commands.md)); it fails if a pet is already present.
 
-With a pet on the active world, the top-center HUD compass shows its species,
-range, and bearing relative to look yaw (`js/fauna/compass.ts` +
-`#petCompass`). Profile (**P**) also lists companion worlds under COMPANIONS.
+With a pet on the active world and no field structures, the top-center HUD
+compass shows its species, range, and bearing relative to look yaw
+(`js/fauna/compass.ts` + `#petCompass`). Profile (**P**) also lists companion
+worlds under COMPANIONS. When any structure is present, the compass tracks the
+nearest structure instead (see [`blueprints.md`](blueprints.md)).
+
+### Field structures
+
+Blueprints in **Build** (**B**) spend cargo to place structures on the active
+planet. Survey beacons are markers; **tents** and **planet bases** are walk-in
+hollow shells (door on the approach face). All use `kind: "structure"` entities
+(`data.blueprintId`). Placement is ahead of the commander, with footprint
+clearance and per-blueprint caps. Aiming at a structure shows its label.
+Shelters resolve walls in local space and raise the ground plane to the floor
+while you stand inside. See [`blueprints.md`](blueprints.md).
 
 ### Rovers
 
@@ -438,7 +461,7 @@ actors in a cave: one XZ coordinate can have several surfaces.
 Vitest covers pure deterministic logic under `tests/`: config math, saves,
 cave brush/chunk math, field raycasts, capsule collision, mesh extraction,
 world helpers, space math, land/launch cinematic curves, fauna, vehicles,
-commands, fabricator builds, planet entities, audio catalog and mapping
+commands, gear, blueprints / structures, planet entities, audio catalog and mapping
 helpers, and mute gain.
 
 Do not build brittle mocks around Three.js, Web Audio graphs, the DOM, or all
@@ -473,12 +496,19 @@ chunk/cell/brush/streaming dimensions.
 4. Cover selection / helpers in `tests/world-generate.test.ts`.
 5. Bump `WORLD_CONTENT_REVISION` if deposit placement or identity changes.
 
-### Add a fabricator build
+### Add commander gear
 
-See [`builds.md`](builds.md). Add the id to `BuildId`, `BUILD_DEFINITIONS`, and
-`BUILD_ORDER` in `js/builds.ts`, extend `BuildEffect` / `resolveBuildModifiers`
-only when a new modifier kind is required, cover it in `tests/builds.test.ts`,
-and keep the catalog table in `builds.md` current.
+See [`gear.md`](gear.md). Add the id to `GearId`, `GEAR_DEFINITIONS`, and
+`GEAR_ORDER` in `js/gear.ts`, extend `GearEffect` / `resolveGearModifiers`
+only when a new modifier kind is required, cover it in `tests/gear.test.ts`,
+and keep the catalog table in `gear.md` current.
+
+### Add a field blueprint
+
+See [`blueprints.md`](blueprints.md). Add the id to `BlueprintId`,
+`BLUEPRINT_DEFINITIONS`, and `BLUEPRINT_ORDER` in `js/blueprints.ts`, add a mesh
+in `js/structures/mesh.ts`, cover it in `tests/blueprints.test.ts`, and keep
+the catalog table in `blueprints.md` current.
 
 ### Add a UI panel
 

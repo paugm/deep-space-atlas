@@ -6,9 +6,13 @@
 
 import { hexToSeed, seedToHex } from "../planet-save.ts";
 import {
-  BUILD_ORDER,
-  buildDefinitionFromToken,
-} from "../builds.ts";
+  BLUEPRINT_ORDER,
+  blueprintDefinitionFromToken,
+} from "../blueprints.ts";
+import {
+  GEAR_ORDER,
+  gearDefinitionFromToken,
+} from "../gear.ts";
 import {
   roverKindFromSpawnToken,
   type RoverKindId,
@@ -31,16 +35,40 @@ export interface CommandHost {
   currentSeed(): number | null;
   toggleMute(): boolean;
   /**
-   * Install a fabricator build without spending cargo (playtest shortcut).
-   * Same installed-state effect as the Build Bay.
+   * Fabricate a field structure without spending cargo (playtest shortcut).
    */
   buildItem(token: string): {
     ok: true;
     label: string;
   } | {
     ok: false;
+    reason:
+      | "unknown"
+      | "unknown-blueprint"
+      | "at-limit"
+      | "too-close"
+      | "out-of-bounds"
+      | "too-steep"
+      | "no-world"
+      | "cannot-afford";
+  };
+  /**
+   * Install commander gear without spending cargo (playtest shortcut).
+   */
+  installGear(token: string): {
+    ok: true;
+    label: string;
+  } | {
+    ok: false;
     reason: "unknown" | "already-owned";
   };
+  /**
+   * Spawn a random companion pet near the player (playtest shortcut).
+   */
+  adoptPet(): Promise<
+    | { ok: true; label: string }
+    | { ok: false; reason: "has-pet" | "no-world" }
+  >;
 }
 
 export function createBuiltinCommands(
@@ -133,18 +161,68 @@ export function createBuiltinCommands(
 
   const build: CommandDefinition = {
     name: "build",
-    usage: `/build <${BUILD_ORDER.join("|")}>`,
+    usage: `/build <${BLUEPRINT_ORDER.join("|")}>`,
     description:
-      "Install a fabricator build without spending cargo (same effect as Build Bay)",
+      "Fabricate a field structure without spending cargo (same effect as Build)",
     run(args) {
       if (args.length !== 1 || args[0] === undefined) {
         return { ok: false, message: "INCOMPLETE SIGNAL" };
       }
-      const definition = buildDefinitionFromToken(args[0]);
+      const definition = blueprintDefinitionFromToken(args[0]);
+      if (definition === null) {
+        return { ok: false, message: "UNKNOWN BLUEPRINT" };
+      }
+      if (!host.hasPlanetWorld()) {
+        return {
+          ok: false,
+          message: "NO PLANET UNDERFOOT — LAND FIRST",
+        };
+      }
+      const result = host.buildItem(definition.id);
+      if (!result.ok) {
+        switch (result.reason) {
+          case "unknown":
+          case "unknown-blueprint":
+            return { ok: false, message: "UNKNOWN BLUEPRINT" };
+          case "at-limit":
+            return { ok: false, message: "PLANET LIMIT REACHED" };
+          case "too-close":
+            return { ok: false, message: "TOO CLOSE TO ANOTHER" };
+          case "out-of-bounds":
+            return { ok: false, message: "OUT OF BOUNDS" };
+          case "too-steep":
+            return { ok: false, message: "TERRAIN TOO STEEP" };
+          case "no-world":
+            return { ok: false, message: "NO PLANET UNDERFOOT — LAND FIRST" };
+          case "cannot-afford":
+            return { ok: false, message: "INSUFFICIENT CARGO" };
+          default: {
+            const exhaustive: never = result.reason;
+            throw new Error(`Unhandled build reason: ${String(exhaustive)}`);
+          }
+        }
+      }
+      return {
+        ok: true,
+        message: `FABRICATED · ${result.label.toUpperCase()}`,
+      };
+    },
+  };
+
+  const gear: CommandDefinition = {
+    name: "gear",
+    usage: `/gear <${GEAR_ORDER.join("|")}>`,
+    description:
+      "Install commander gear without spending cargo (same effect as Gear)",
+    run(args) {
+      if (args.length !== 1 || args[0] === undefined) {
+        return { ok: false, message: "INCOMPLETE SIGNAL" };
+      }
+      const definition = gearDefinitionFromToken(args[0]);
       if (definition === null) {
         return { ok: false, message: "UNKNOWN SCHEMATIC" };
       }
-      const result = host.buildItem(definition.id);
+      const result = host.installGear(definition.id);
       if (!result.ok) {
         switch (result.reason) {
           case "already-owned":
@@ -153,7 +231,7 @@ export function createBuiltinCommands(
             return { ok: false, message: "UNKNOWN SCHEMATIC" };
           default: {
             const exhaustive: never = result.reason;
-            throw new Error(`Unhandled build reason: ${String(exhaustive)}`);
+            throw new Error(`Unhandled gear reason: ${String(exhaustive)}`);
           }
         }
       }
@@ -168,15 +246,15 @@ export function createBuiltinCommands(
     name: "gimme",
     usage: "/gimme everything",
     description:
-      "Install every fabricator build without spending cargo (playtest)",
+      "Install every gear recipe without spending cargo (playtest)",
     run(args) {
       if (args.length !== 1 || args[0]?.toLowerCase() !== "everything") {
         return { ok: false, message: "INCOMPLETE SIGNAL" };
       }
       let installed = 0;
       let alreadyOwned = 0;
-      for (const buildId of BUILD_ORDER) {
-        const result = host.buildItem(buildId);
+      for (const gearId of GEAR_ORDER) {
+        const result = host.installGear(gearId);
         if (result.ok) {
           installed += 1;
           continue;
@@ -189,11 +267,11 @@ export function createBuiltinCommands(
             return { ok: false, message: "UNKNOWN SCHEMATIC" };
           default: {
             const exhaustive: never = result.reason;
-            throw new Error(`Unhandled build reason: ${String(exhaustive)}`);
+            throw new Error(`Unhandled gear reason: ${String(exhaustive)}`);
           }
         }
       }
-      if (installed === 0 && alreadyOwned === BUILD_ORDER.length) {
+      if (installed === 0 && alreadyOwned === GEAR_ORDER.length) {
         return { ok: true, message: "FULL LOADOUT ALREADY INSTALLED" };
       }
       return {
@@ -203,5 +281,37 @@ export function createBuiltinCommands(
     },
   };
 
-  return [spawn, travel, mute, build, gimme];
+  const adopt: CommandDefinition = {
+    name: "adopt",
+    usage: "/adopt pet",
+    description:
+      "Spawn a random companion pet near the player (fails if one already exists)",
+    async run(args) {
+      if (args.length !== 1 || args[0]?.toLowerCase() !== "pet") {
+        return { ok: false, message: "INCOMPLETE SIGNAL" };
+      }
+      const result = await host.adoptPet();
+      if (!result.ok) {
+        switch (result.reason) {
+          case "has-pet":
+            return { ok: false, message: "ALREADY HAVE A COMPANION" };
+          case "no-world":
+            return {
+              ok: false,
+              message: "NO PLANET UNDERFOOT — LAND FIRST",
+            };
+          default: {
+            const exhaustive: never = result.reason;
+            throw new Error(`Unhandled adopt reason: ${String(exhaustive)}`);
+          }
+        }
+      }
+      return {
+        ok: true,
+        message: `COMPANION BONDED · ${result.label.toUpperCase()}`,
+      };
+    },
+  };
+
+  return [spawn, travel, mute, build, gear, gimme, adopt];
 }

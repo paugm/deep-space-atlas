@@ -21,6 +21,7 @@ import {
 import type { PetEntityData } from "./pet-entity.ts";
 import {
   FAUNA_DEFINITIONS,
+  pickRandomFaunaSpecies,
   type FaunaSpeciesId,
 } from "./species.ts";
 
@@ -61,6 +62,14 @@ export interface FaunaSystem {
   tryTame(creatureId: string):
     | { ok: true; entity: PlanetEntity }
     | { ok: false; reason: "missing" | "not-wild" | "has-pet" };
+  /**
+   * Spawn a random species as the planet pet near `near`. Playtest / slash
+   * command only — does not claim a wild spawn id.
+   */
+  adoptPet(near: { x: number; z: number }): Promise<
+    | { ok: true; entity: PlanetEntity; label: string }
+    | { ok: false; reason: "has-pet" | "no-world" }
+  >;
   hasPet(): boolean;
   getPetBeacon(): PetBeacon | null;
   getPetSaveEntity(): PlanetEntity | null;
@@ -434,11 +443,61 @@ export function createFaunaSystem(): FaunaSystem {
     };
   }
 
+  async function adoptPet(near: { x: number; z: number }): Promise<
+    | { ok: true; entity: PlanetEntity; label: string }
+    | { ok: false; reason: "has-pet" | "no-world" }
+  > {
+    if (hasPet()) return { ok: false, reason: "has-pet" };
+    const activeWorld = world;
+    if (activeWorld === null) return { ok: false, reason: "no-world" };
+
+    const species = pickRandomFaunaSpecies(Math.random);
+    const pose = petWaitPose(near.x, near.z, Math.random);
+    const creature = await spawnCreature({
+      id: "pet",
+      species,
+      role: "pet",
+      pose,
+      homeX: pose.x,
+      homeZ: pose.z,
+      greet: true,
+    });
+
+    // World may have been torn down while the GLB loaded.
+    if (world !== activeWorld) {
+      creature.mixer.stopAllAction();
+      creature.root.removeFromParent();
+      return { ok: false, reason: "no-world" };
+    }
+    if (hasPet()) {
+      creature.mixer.stopAllAction();
+      creature.root.removeFromParent();
+      return { ok: false, reason: "has-pet" };
+    }
+
+    creatures.push(creature);
+    refreshAimTargets();
+
+    const height = activeWorld.heightAt(pose.x, pose.z);
+    return {
+      ok: true,
+      entity: createPetEntity({
+        species,
+        x: pose.x,
+        y: height,
+        z: pose.z,
+        yaw: pose.yaw,
+      }),
+      label: FAUNA_DEFINITIONS[species].label,
+    };
+  }
+
   return {
     sync,
     clear,
     update,
     tryTame,
+    adoptPet,
     hasPet,
     getPetBeacon,
     getPetSaveEntity,

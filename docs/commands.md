@@ -29,8 +29,10 @@ a short rejection message, never a list of commands.
 | `/spawn rovervariant` | Spawn an extra Rover variant ahead. |
 | `/travel <seed>` | Instant-travel to a planet by 32-bit hex seed (1–8 hex digits). Invalid tokens show a cryptic lattice message instead of traveling. |
 | `/mute` | Toggle master audio (SFX + ambient) and save the preference on the player profile. Same as the **M** key. Sound is on by default. |
-| `/build <token>` | Install a fabricator build without spending cargo (same installed effect as the Build Bay). Tokens match recipe ids such as `thruster-coil-i`. Already-owned or unknown tokens are rejected. |
-| `/gimme everything` | Install every fabricator build without spending cargo. Idempotent if some or all are already owned. |
+| `/build <token>` | Fabricate a field structure without spending cargo (same effect as Build). Tokens match blueprint ids such as `beacon`. Requires a loaded planet. |
+| `/gear <token>` | Install commander gear without spending cargo (same effect as Gear). Tokens match recipe ids such as `thruster-coil-i`. Already-owned or unknown tokens are rejected. |
+| `/gimme everything` | Install every gear recipe without spending cargo. Idempotent if some or all are already owned. |
+| `/adopt pet` | Spawn a random companion pet near the player. Fails with an error if this planet already has a pet. Requires a loaded planet. |
 
 Leading `/` is optional. Names are case-insensitive.
 
@@ -60,13 +62,15 @@ Submit ──────► ui.onCommandSubmit(line)
            · travelToSeed / loadWorld
            · toggleMute
            · buildItem
+           · installGear
+           · adoptPet
 ```
 
 | Module | Role |
 | --- | --- |
 | `js/commands/parse.ts` | Pure line → `{ name, args }` |
 | `js/commands/registry.ts` | Register definitions, `dispatch`, `list` |
-| `js/commands/builtins.ts` | `/spawn`, `/travel`, `/mute`, `/build`, `/gimme` + `CommandHost` |
+| `js/commands/builtins.ts` | `/spawn`, `/travel`, `/mute`, `/build`, `/gear`, `/gimme`, `/adopt` + `CommandHost` |
 | `js/commands/index.ts` | Public re-exports |
 | `js/main.ts` | Implements `CommandHost`, binds UI submit |
 | `js/gameplay.ts` | Enter / Escape / pointer-lock overlay state |

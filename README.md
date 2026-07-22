@@ -42,7 +42,7 @@ see [`CREDITS.md`](CREDITS.md).
 
 <pre>
 ┌──────────────────────────────────────────────────────────────┐
-│  DEEP SPACE ATLAS //// SPEC SHEET                   v0.20.0  │
+│  DEEP SPACE ATLAS //// SPEC SHEET                   v0.21.0  │
 ├──────────────────────────────────────────────────────────────┤
 │  WORLDS                                                      │
 │    PLANETS ........ 4,294,967,296                            │
@@ -54,7 +54,8 @@ see [`CREDITS.md`](CREDITS.md).
 │    MATERIALS ...... 5  Silicate · Iron · Carbon · Copper ·   │
 │                        Aetherite                             │
 │    DEPOSITS ....... 4 mineable types                         │
-│    FABRICATOR ..... 14 builds · jetpack · extractor · mobility · rover │
+│    GEAR ........... 14 upgrades · jetpack · extractor · mobility · rover │
+│    BLUEPRINTS ..... Beacon · tent · planet base (walk-in shelters)       │
 │    FAUNA .......... 13 species · ~22% of worlds · 1–3 each   │
 │    ROVERS ......... 3 kinds · 0–2 per planet                 │
 │    SHIP ........... 1 survey vessel                          │
@@ -81,9 +82,10 @@ see [`CREDITS.md`](CREDITS.md).
 | Space | Jump |
 | Hold Space (airborne) | Jetpack |
 | Shift (forward) | Sprint (disabled while swimming) |
-| I | Cargo hold (tabs to Build / Profile) |
-| B | Build bay / fabricator (tabs to Cargo / Profile) |
-| P | Commander profile (tabs to Cargo / Build; companions + visits) |
+| I | Cargo hold (tabs to Gear / Build / Profile) |
+| G | Gear / permanent upgrades (tabs to Cargo / Build / Profile) |
+| B | Build / field blueprints (tabs to Cargo / Gear / Profile) |
+| P | Commander profile (tabs to Cargo / Gear / Build; companions + visits) |
 | M | Mute / unmute audio |
 | E (look at rover) | Board / exit a wheeled rover |
 | E near ship | Board and launch to space |

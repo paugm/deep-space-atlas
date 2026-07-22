@@ -10,6 +10,7 @@ import {
   createEmptyPlanetDocument,
   parsePlanetDocument,
   sealPlanetDocument,
+  upsertPlanetEntity,
 } from "../js/planet-save.ts";
 import {
   createParkedShipEntity,
@@ -17,6 +18,11 @@ import {
   parseParkedShipPose,
   upsertParkedShipEntity,
 } from "../js/space/parked-ship-entity.ts";
+import {
+  createStructureEntity,
+  listStructureEntities,
+  parseStructurePose,
+} from "../js/structures/entity.ts";
 
 describe("player entity", () => {
   it("round-trips pose through create / parse / upsert", () => {
@@ -125,6 +131,43 @@ describe("parked ship entity", () => {
         x: 1,
         y: 0,
         z: 1,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("structure entity", () => {
+  it("round-trips pose through create / parse / list", () => {
+    const document = createEmptyPlanetDocument("DEADBEEF");
+    const entity = createStructureEntity({
+      id: "structure-0",
+      blueprintId: "beacon",
+      x: 4,
+      z: -6,
+      yaw: 0.5,
+    });
+    upsertPlanetEntity(document, entity);
+    const listed = listStructureEntities(document);
+    expect(listed).toHaveLength(1);
+    expect(parseStructurePose(listed[0]!)).toEqual({
+      id: "structure-0",
+      blueprintId: "beacon",
+      x: 4,
+      z: -6,
+      yaw: 0.5,
+    });
+  });
+
+  it("rejects malformed structure entities", () => {
+    expect(
+      parseStructurePose({
+        id: "structure-0",
+        kind: "structure",
+        x: 1,
+        y: 0,
+        z: 1,
+        yaw: 0,
+        data: { blueprintId: "nope" },
       }),
     ).toBeNull();
   });

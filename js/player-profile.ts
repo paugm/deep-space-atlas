@@ -1,12 +1,12 @@
 /**
  * Global player profile: callsign, cargo, playtime, mute preference, installed
- * fabricator builds, and visited-planet index. Lives in the shared IndexedDB
- * next to per-planet rows and not inside planet patches. Pets stay
- * planet-bound; visited entries only cache hasPet for UI.
+ * gear, and visited-planet index. Lives in the shared IndexedDB next to
+ * per-planet rows and not inside planet patches. Pets stay planet-bound;
+ * visited entries only cache hasPet for UI.
  */
 
-import type { BuildId } from "./builds.ts";
-import { cloneBuilds, isBuildId } from "./builds.ts";
+import type { GearId } from "./gear.ts";
+import { cloneGear, isGearId } from "./gear.ts";
 import type { Inventory } from "./config.ts";
 import { MATERIAL_ORDER } from "./config.ts";
 import {
@@ -15,11 +15,13 @@ import {
   openSaveDb,
 } from "./save-db.ts";
 
-export const PLAYER_PROFILE_VERSION = 3;
+export const PLAYER_PROFILE_VERSION = 4;
 /** Profiles sealed before mute preference was stored. */
 export const PLAYER_PROFILE_VERSION_V1 = 1;
-/** Profiles sealed before fabricator builds were stored. */
+/** Profiles sealed before gear was stored. */
 export const PLAYER_PROFILE_VERSION_V2 = 2;
+/** Profiles sealed with `builds` (renamed to `gear` in v4). */
+export const PLAYER_PROFILE_VERSION_V3 = 3;
 export const PROFILE_DOCUMENT_ID = "player";
 export const DEFAULT_PLAYER_NAME = "Explorer";
 export const MAX_PLAYER_NAME_LENGTH = 24;
@@ -46,8 +48,8 @@ export interface PlayerProfile {
   playTimeMs: number;
   /** Master audio mute; false means sound is active. */
   muted: boolean;
-  /** Permanently installed fabricator builds (profile-wide). */
-  builds: BuildId[];
+  /** Permanently installed commander gear (profile-wide). */
+  gear: GearId[];
   visited: VisitedPlanet[];
   checksum: string;
 }
@@ -57,7 +59,7 @@ export interface ProfileView {
   playTimeMs: number;
   inventory: Inventory;
   muted: boolean;
-  builds: readonly BuildId[];
+  gear: readonly GearId[];
   visited: readonly VisitedPlanet[];
 }
 
@@ -75,7 +77,7 @@ export interface ProfileSession {
   adopt(profile: PlayerProfile): void;
   setName(name: string): void;
   setInventory(inventory: Inventory): void;
-  setBuilds(builds: readonly BuildId[]): void;
+  setGear(gear: readonly GearId[]): void;
   setMuted(muted: boolean): void;
   addPlayTime(deltaMs: number): void;
   recordVisit(seed: string, name: string, hasPet: boolean): void;
@@ -190,16 +192,16 @@ function parseVisitedList(raw: unknown): VisitedPlanet[] | null {
   return visited;
 }
 
-function parseBuilds(raw: unknown): BuildId[] | null {
+function parseGear(raw: unknown): GearId[] | null {
   if (!Array.isArray(raw)) return null;
-  const builds: BuildId[] = [];
-  const seen = new Set<BuildId>();
+  const gear: GearId[] = [];
+  const seen = new Set<GearId>();
   for (const entry of raw) {
-    if (!isBuildId(entry) || seen.has(entry)) return null;
+    if (!isGearId(entry) || seen.has(entry)) return null;
     seen.add(entry);
-    builds.push(entry);
+    gear.push(entry);
   }
-  return builds;
+  return gear;
 }
 
 function fnv1aHex(payload: string): string {
@@ -229,7 +231,7 @@ export function sealPlayerProfile(
     inventory: cloneInventory(document.inventory),
     playTimeMs: Math.max(0, Math.floor(document.playTimeMs)),
     muted: document.muted === true,
-    builds: cloneBuilds(document.builds ?? []),
+    gear: cloneGear(document.gear ?? []),
     visited: document.visited.map((entry) => ({ ...entry })),
     checksum: "",
   };
@@ -245,7 +247,7 @@ export function createEmptyPlayerProfile(): PlayerProfile {
     inventory: createEmptyInventory(),
     playTimeMs: 0,
     muted: DEFAULT_AUDIO_MUTED,
-    builds: [],
+    gear: [],
     visited: [],
   });
 }
@@ -262,7 +264,7 @@ function checksumPlayerProfileV1(document: {
   return fnv1aHex(JSON.stringify(document));
 }
 
-/** Checksum body for legacy v2 profiles (no builds field). */
+/** Checksum body for legacy v2 profiles (no gear field). */
 function checksumPlayerProfileV2(document: {
   v: number;
   id: string;
@@ -270,6 +272,20 @@ function checksumPlayerProfileV2(document: {
   inventory: Inventory;
   playTimeMs: number;
   muted: boolean;
+  visited: VisitedPlanet[];
+}): string {
+  return fnv1aHex(JSON.stringify(document));
+}
+
+/** Checksum body for legacy v3 profiles (`builds` instead of `gear`). */
+function checksumPlayerProfileV3(document: {
+  v: number;
+  id: string;
+  name: string;
+  inventory: Inventory;
+  playTimeMs: number;
+  muted: boolean;
+  builds: GearId[];
   visited: VisitedPlanet[];
 }): string {
   return fnv1aHex(JSON.stringify(document));
@@ -302,7 +318,7 @@ export function parsePlayerProfile(raw: unknown): PlayerProfile | null {
       visited,
     });
     if (expected !== raw.checksum) return null;
-    // Upgrade in memory; next flush seals as current with muted + empty builds.
+    // Upgrade in memory; next flush seals as current with muted + empty gear.
     return sealPlayerProfile({
       v: PLAYER_PROFILE_VERSION,
       id: PROFILE_DOCUMENT_ID,
@@ -310,7 +326,7 @@ export function parsePlayerProfile(raw: unknown): PlayerProfile | null {
       inventory,
       playTimeMs,
       muted: DEFAULT_AUDIO_MUTED,
-      builds: [],
+      gear: [],
       visited,
     });
   }
@@ -334,15 +350,42 @@ export function parsePlayerProfile(raw: unknown): PlayerProfile | null {
       inventory,
       playTimeMs,
       muted: raw.muted,
-      builds: [],
+      gear: [],
+      visited,
+    });
+  }
+
+  if (raw.v === PLAYER_PROFILE_VERSION_V3) {
+    if (typeof raw.muted !== "boolean") return null;
+    const gear = parseGear(raw.builds);
+    if (gear === null) return null;
+    const expected = checksumPlayerProfileV3({
+      v: PLAYER_PROFILE_VERSION_V3,
+      id: PROFILE_DOCUMENT_ID,
+      name,
+      inventory,
+      playTimeMs,
+      muted: raw.muted,
+      builds: gear,
+      visited,
+    });
+    if (expected !== raw.checksum) return null;
+    return sealPlayerProfile({
+      v: PLAYER_PROFILE_VERSION,
+      id: PROFILE_DOCUMENT_ID,
+      name,
+      inventory,
+      playTimeMs,
+      muted: raw.muted,
+      gear,
       visited,
     });
   }
 
   if (raw.v !== PLAYER_PROFILE_VERSION) return null;
   if (typeof raw.muted !== "boolean") return null;
-  const builds = parseBuilds(raw.builds);
-  if (builds === null) return null;
+  const gear = parseGear(raw.gear);
+  if (gear === null) return null;
 
   const candidate: PlayerProfile = {
     v: PLAYER_PROFILE_VERSION,
@@ -351,7 +394,7 @@ export function parsePlayerProfile(raw: unknown): PlayerProfile | null {
     inventory,
     playTimeMs,
     muted: raw.muted,
-    builds,
+    gear,
     visited,
     checksum: raw.checksum,
   };
@@ -363,7 +406,7 @@ export function parsePlayerProfile(raw: unknown): PlayerProfile | null {
     inventory: candidate.inventory,
     playTimeMs: candidate.playTimeMs,
     muted: candidate.muted,
-    builds: candidate.builds,
+    gear: candidate.gear,
     visited: candidate.visited,
   });
   if (expected !== raw.checksum) return null;
@@ -508,7 +551,7 @@ export function createProfileSession(options: {
       playTimeMs: active.playTimeMs,
       inventory: cloneInventory(active.inventory),
       muted: active.muted,
-      builds: cloneBuilds(active.builds),
+      gear: cloneGear(active.gear),
       visited: active.visited.map((entry) => ({ ...entry })),
     };
   }
@@ -542,15 +585,15 @@ export function createProfileSession(options: {
     scheduleSave();
   }
 
-  function setBuilds(builds: readonly BuildId[]): void {
-    const next = cloneBuilds(builds);
+  function setGear(gear: readonly GearId[]): void {
+    const next = cloneGear(gear);
     if (
-      next.length === active.builds.length &&
-      next.every((id, index) => id === active.builds[index])
+      next.length === active.gear.length &&
+      next.every((id, index) => id === active.gear[index])
     ) {
       return;
     }
-    active = { ...active, builds: next };
+    active = { ...active, gear: next };
     scheduleSave();
   }
 
@@ -613,7 +656,7 @@ export function createProfileSession(options: {
     adopt,
     setName,
     setInventory,
-    setBuilds,
+    setGear,
     setMuted,
     addPlayTime,
     recordVisit,

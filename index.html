@@ -237,6 +237,15 @@
             class="menu-tab"
             role="tab"
             aria-selected="false"
+            data-menu="gear"
+          >
+            GEAR <kbd>G</kbd>
+          </button>
+          <button
+            type="button"
+            class="menu-tab"
+            role="tab"
+            aria-selected="false"
             data-menu="build"
           >
             BUILD <kbd>B</kbd>
@@ -260,8 +269,8 @@
       </div>
     </div>
 
-    <div id="buildOverlay" class="overlay hidden">
-      <div class="panel menu-panel build-panel">
+    <div id="gearOverlay" class="overlay hidden">
+      <div class="panel menu-panel recipe-panel">
         <div class="menu-tabs" role="tablist" aria-label="Commander menus">
           <button
             type="button"
@@ -271,6 +280,74 @@
             data-menu="inventory"
           >
             CARGO <kbd>I</kbd>
+          </button>
+          <button
+            type="button"
+            class="menu-tab active"
+            role="tab"
+            aria-selected="true"
+            data-menu="gear"
+          >
+            GEAR <kbd>G</kbd>
+          </button>
+          <button
+            type="button"
+            class="menu-tab"
+            role="tab"
+            aria-selected="false"
+            data-menu="build"
+          >
+            BUILD <kbd>B</kbd>
+          </button>
+          <button
+            type="button"
+            class="menu-tab"
+            role="tab"
+            aria-selected="false"
+            data-menu="profile"
+          >
+            PROFILE <kbd>P</kbd>
+          </button>
+        </div>
+        <div class="eyebrow">COMMANDER LOADOUT</div>
+        <h1 class="inventory-title">GEAR</h1>
+        <p class="recipe-intro">
+          Spend cargo to install permanent upgrades. Gear stays on your profile
+          across planets.
+        </p>
+        <div class="recipe-section-title">AVAILABLE</div>
+        <div id="gearRecipes" class="recipe-list"></div>
+        <div class="recipe-section-title">INSTALLED</div>
+        <p id="gearInstalledEmpty" class="recipe-empty">
+          No gear installed yet.
+        </p>
+        <div id="gearInstalled" class="recipe-list hidden"></div>
+        <div class="btnrow">
+          <button id="gearClose" type="button">CLOSE&nbsp;&nbsp;[ G ]</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="buildOverlay" class="overlay hidden">
+      <div class="panel menu-panel recipe-panel">
+        <div class="menu-tabs" role="tablist" aria-label="Commander menus">
+          <button
+            type="button"
+            class="menu-tab"
+            role="tab"
+            aria-selected="false"
+            data-menu="inventory"
+          >
+            CARGO <kbd>I</kbd>
+          </button>
+          <button
+            type="button"
+            class="menu-tab"
+            role="tab"
+            aria-selected="false"
+            data-menu="gear"
+          >
+            GEAR <kbd>G</kbd>
           </button>
           <button
             type="button"
@@ -291,19 +368,14 @@
             PROFILE <kbd>P</kbd>
           </button>
         </div>
-        <div class="eyebrow">FABRICATOR</div>
-        <h1 class="inventory-title">BUILD BAY</h1>
-        <p class="build-intro">
-          Spend cargo to install permanent gear. Installed builds stay on your
-          profile across planets.
+        <div class="eyebrow">FIELD BLUEPRINTS</div>
+        <h1 class="inventory-title">BUILD</h1>
+        <p class="recipe-intro">
+          Spend cargo to fabricate structures on this planet. Each placement
+          spends materials; blueprints are always available.
         </p>
-        <div class="build-section-title">AVAILABLE</div>
-        <div id="buildRecipes" class="build-list"></div>
-        <div class="build-section-title">INSTALLED</div>
-        <p id="buildInstalledEmpty" class="build-empty">
-          No gear installed yet.
-        </p>
-        <div id="buildInstalled" class="build-list hidden"></div>
+        <div class="recipe-section-title">BLUEPRINTS</div>
+        <div id="buildRecipes" class="recipe-list"></div>
         <div class="btnrow">
           <button id="buildClose" type="button">CLOSE&nbsp;&nbsp;[ B ]</button>
         </div>
@@ -321,6 +393,15 @@
             data-menu="inventory"
           >
             CARGO <kbd>I</kbd>
+          </button>
+          <button
+            type="button"
+            class="menu-tab"
+            role="tab"
+            aria-selected="false"
+            data-menu="gear"
+          >
+            GEAR <kbd>G</kbd>
           </button>
           <button
             type="button"

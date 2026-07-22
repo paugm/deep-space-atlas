@@ -42,7 +42,12 @@ const SAVE_DEBOUNCE_MS = 400;
 
 const VERTEX_COUNT = VERTICES_PER_ROW * VERTICES_PER_ROW;
 
-export type PlanetEntityKind = "pet" | "player" | "parked-ship" | "rover";
+export type PlanetEntityKind =
+  | "pet"
+  | "player"
+  | "parked-ship"
+  | "rover"
+  | "structure";
 
 export interface PlanetEntity {
   id: string;
@@ -56,7 +61,8 @@ export interface PlanetEntity {
 
 /**
  * Look up a singleton entity by kind (pet / player / parked-ship use kind as
- * id). Multi-instance kinds such as `rover` should use `list*` helpers instead.
+ * id). Multi-instance kinds such as `rover` and `structure` should use
+ * `list*` / `get*Entities` helpers instead.
  */
 export function findPlanetEntity(
   document: Pick<PlanetDocument, "entities">,
@@ -147,6 +153,11 @@ export interface PlanetSession {
     options?: { schedule?: boolean },
   ): void;
   getRoverEntities(): PlanetEntity[];
+  recordStructures(
+    entities: readonly PlanetEntity[],
+    options?: { schedule?: boolean },
+  ): void;
+  getStructureEntities(): PlanetEntity[];
   flush(): Promise<void>;
   /**
    * Stop auto-saves after leaving a planet (e.g. launch to space). Caller must
@@ -740,6 +751,24 @@ export function createPlanetSession(options: {
     return active.entities.filter((entry) => entry.kind === "rover");
   }
 
+  function recordStructures(
+    entities: readonly PlanetEntity[],
+    writeOptions: { schedule?: boolean } = {},
+  ): void {
+    if (!hasActivePlanet) return;
+    active.entities = active.entities.filter(
+      (entry) => entry.kind !== "structure",
+    );
+    for (const entity of entities) {
+      upsertPlanetEntity(active, entity);
+    }
+    if (writeOptions.schedule !== false) scheduleSave();
+  }
+
+  function getStructureEntities(): PlanetEntity[] {
+    return active.entities.filter((entry) => entry.kind === "structure");
+  }
+
   function suspend(): void {
     if (saveTimer !== null) {
       window.clearTimeout(saveTimer);
@@ -767,6 +796,8 @@ export function createPlanetSession(options: {
     getParkedShipEntity,
     recordRovers,
     getRoverEntities,
+    recordStructures,
+    getStructureEntities,
     flush,
     suspend,
     resume,

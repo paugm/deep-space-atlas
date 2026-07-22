@@ -715,7 +715,7 @@ button:active {
   letter-spacing: 0.3em;
 }
 
-.build-panel {
+.recipe-panel {
   width: min(560px, 100%);
   max-width: 560px;
   max-height: min(86vh, 720px);
@@ -723,7 +723,7 @@ button:active {
   overflow-y: auto;
 }
 
-.build-intro {
+.recipe-intro {
   margin: -8px 0 18px;
   color: var(--dim);
   font-size: 11px;
@@ -731,14 +731,14 @@ button:active {
   line-height: 1.55;
 }
 
-.build-section-title {
+.recipe-section-title {
   margin: 8px 0 10px;
   color: var(--accent);
   font-size: 10px;
   letter-spacing: 0.28em;
 }
 
-.build-list {
+.recipe-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -746,14 +746,14 @@ button:active {
   min-width: 0;
 }
 
-.build-empty {
+.recipe-empty {
   margin: 0 0 18px;
   color: var(--dim);
   font-size: 11px;
   letter-spacing: 0.1em;
 }
 
-.build-card {
+.recipe-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px 14px;
@@ -765,19 +765,19 @@ button:active {
   max-width: 100%;
 }
 
-.build-card.locked {
+.recipe-card.locked {
   opacity: 0.45;
 }
 
-.build-card.installed {
+.recipe-card.installed {
   border-color: rgba(125, 240, 207, 0.35);
 }
 
-.build-card-main {
+.recipe-card-main {
   min-width: 0;
 }
 
-.build-card-label {
+.recipe-card-label {
   margin-bottom: 4px;
   font-size: 13px;
   font-weight: 700;
@@ -785,7 +785,7 @@ button:active {
   text-transform: uppercase;
 }
 
-.build-card-blurb {
+.recipe-card-blurb {
   margin-bottom: 6px;
   color: var(--dim);
   font-size: 11px;
@@ -793,7 +793,7 @@ button:active {
   line-height: 1.4;
 }
 
-.build-card-meta {
+.recipe-card-meta {
   color: var(--dim);
   font-size: 10px;
   letter-spacing: 0.1em;
@@ -801,17 +801,18 @@ button:active {
   overflow-wrap: anywhere;
 }
 
-.build-card-meta.ready {
+.recipe-card-meta.ready {
   color: var(--accent);
 }
 
-.build-card button {
+.recipe-card button {
   align-self: center;
   padding: 8px 12px;
   font-size: 10px;
   letter-spacing: 0.16em;
 }
 
+#gearClose,
 #buildClose,
 #invClose {
   color: var(--accent);

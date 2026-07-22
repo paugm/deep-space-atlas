@@ -1,12 +1,17 @@
 import type { Inventory, MaterialId } from "./config.ts";
-import type { BuildId } from "./builds.ts";
+import type { GearId } from "./gear.ts";
 import {
-  BUILD_DEFINITIONS,
-  BUILD_ORDER,
-  canAffordBuild,
-  formatBuildCost,
+  GEAR_DEFINITIONS,
+  GEAR_ORDER,
+  canAffordCost,
+  formatCargoCost,
   missingPrerequisites,
-} from "./builds.ts";
+} from "./gear.ts";
+import type { BlueprintId } from "./blueprints.ts";
+import {
+  BLUEPRINT_DEFINITIONS,
+  BLUEPRINT_ORDER,
+} from "./blueprints.ts";
 import type { ProfileView } from "./player-profile.ts";
 import {
   MATERIAL_ORDER,
@@ -31,12 +36,14 @@ import {
 export interface UIActions {
   onPlay: () => void;
   onToggleInventory: () => void;
+  onToggleGearMenu: () => void;
   onToggleBuildMenu: () => void;
   onToggleProfile: () => void;
-  onOpenMenu: (menu: "inventory" | "build" | "profile") => void;
+  onOpenMenu: (menu: "inventory" | "gear" | "build" | "profile") => void;
   onDismissCommandBar: () => void;
   onCommandSubmit: (line: string) => void;
-  onBuildItem: (buildId: BuildId) => void;
+  onInstallGear: (gearId: GearId) => void;
+  onFabricate: (blueprintId: BlueprintId) => void;
   onProfileRename: (name: string) => void;
   onTravelToVisited: (seedHex: string) => void;
   onSaveGame: () => void;
@@ -44,9 +51,14 @@ export interface UIActions {
   onNewGame: () => void;
 }
 
+export interface GearMenuView {
+  inventory: Inventory;
+  gear: readonly GearId[];
+}
+
 export interface BuildMenuView {
   inventory: Inventory;
-  builds: readonly BuildId[];
+  structures: readonly { blueprintId: BlueprintId }[];
 }
 
 export interface WorldSummary {
@@ -72,6 +84,7 @@ export interface UI {
   setFuel(fuel: number): void;
   setFlightSpeed(speed: number, boosting: boolean): void;
   setInventoryVisible(visible: boolean): void;
+  setGearMenuVisible(visible: boolean): void;
   setBuildMenuVisible(visible: boolean): void;
   setProfileVisible(visible: boolean): void;
   setCommandBarVisible(visible: boolean): void;
@@ -80,6 +93,7 @@ export interface UI {
     tone: "ok" | "error" | "neutral",
   ): void;
   updateProfile(view: ProfileView, currentSeedHex: string | null): void;
+  updateGearMenu(view: GearMenuView): void;
   updateBuildMenu(view: BuildMenuView): void;
   setMiningProgress(progress: number): void;
   setTargetLabel(label: string): void;
@@ -138,8 +152,11 @@ export function createUI(): UI {
     buildOverlay: byId("buildOverlay", HTMLDivElement),
     buildClose: byId("buildClose", HTMLButtonElement),
     buildRecipes: byId("buildRecipes", HTMLDivElement),
-    buildInstalled: byId("buildInstalled", HTMLDivElement),
-    buildInstalledEmpty: byId("buildInstalledEmpty", HTMLParagraphElement),
+    gearOverlay: byId("gearOverlay", HTMLDivElement),
+    gearClose: byId("gearClose", HTMLButtonElement),
+    gearRecipes: byId("gearRecipes", HTMLDivElement),
+    gearInstalled: byId("gearInstalled", HTMLDivElement),
+    gearInstalledEmpty: byId("gearInstalledEmpty", HTMLParagraphElement),
     profileOverlay: byId("profileOverlay", HTMLDivElement),
     profileClose: byId("profileClose", HTMLButtonElement),
     profileName: byId("profileName", HTMLInputElement),
@@ -572,43 +589,43 @@ export function createUI(): UI {
     }
   }
 
+  function hideCommanderMenusExcept(
+    keep: "inventory" | "gear" | "build" | "profile" | "command" | "none",
+  ): void {
+    if (keep !== "inventory") {
+      elements.inventoryOverlay.classList.add("hidden");
+    }
+    if (keep !== "gear") elements.gearOverlay.classList.add("hidden");
+    if (keep !== "build") elements.buildOverlay.classList.add("hidden");
+    if (keep !== "profile") elements.profileOverlay.classList.add("hidden");
+    if (keep !== "command") elements.commandOverlay.classList.add("hidden");
+    if (keep !== "none") elements.startOverlay.classList.add("hidden");
+  }
+
   function setInventoryVisible(visible: boolean): void {
     elements.inventoryOverlay.classList.toggle("hidden", !visible);
-    if (visible) {
-      elements.startOverlay.classList.add("hidden");
-      elements.buildOverlay.classList.add("hidden");
-      elements.profileOverlay.classList.add("hidden");
-      elements.commandOverlay.classList.add("hidden");
-    }
+    if (visible) hideCommanderMenusExcept("inventory");
+  }
+
+  function setGearMenuVisible(visible: boolean): void {
+    elements.gearOverlay.classList.toggle("hidden", !visible);
+    if (visible) hideCommanderMenusExcept("gear");
   }
 
   function setBuildMenuVisible(visible: boolean): void {
     elements.buildOverlay.classList.toggle("hidden", !visible);
-    if (visible) {
-      elements.startOverlay.classList.add("hidden");
-      elements.inventoryOverlay.classList.add("hidden");
-      elements.profileOverlay.classList.add("hidden");
-      elements.commandOverlay.classList.add("hidden");
-    }
+    if (visible) hideCommanderMenusExcept("build");
   }
 
   function setProfileVisible(visible: boolean): void {
     elements.profileOverlay.classList.toggle("hidden", !visible);
-    if (visible) {
-      elements.startOverlay.classList.add("hidden");
-      elements.inventoryOverlay.classList.add("hidden");
-      elements.buildOverlay.classList.add("hidden");
-      elements.commandOverlay.classList.add("hidden");
-    }
+    if (visible) hideCommanderMenusExcept("profile");
   }
 
   function setCommandBarVisible(visible: boolean): void {
     elements.commandOverlay.classList.toggle("hidden", !visible);
     if (visible) {
-      elements.startOverlay.classList.add("hidden");
-      elements.inventoryOverlay.classList.add("hidden");
-      elements.buildOverlay.classList.add("hidden");
-      elements.profileOverlay.classList.add("hidden");
+      hideCommanderMenusExcept("command");
       elements.commandInput.value = "";
       setCommandFeedback("", "neutral");
       queueMicrotask(() => elements.commandInput.focus());
@@ -626,86 +643,140 @@ export function createUI(): UI {
     elements.commandFeedback.classList.toggle("error", tone === "error");
   }
 
-  function updateBuildMenu(view: BuildMenuView): void {
-    const owned = new Set(view.builds);
-    elements.buildRecipes.replaceChildren();
-    elements.buildInstalled.replaceChildren();
+  function updateGearMenu(view: GearMenuView): void {
+    const owned = new Set(view.gear);
+    elements.gearRecipes.replaceChildren();
+    elements.gearInstalled.replaceChildren();
 
-    for (const buildId of BUILD_ORDER) {
-      const definition = BUILD_DEFINITIONS[buildId];
-      if (owned.has(buildId)) continue;
+    for (const gearId of GEAR_ORDER) {
+      const definition = GEAR_DEFINITIONS[gearId];
+      if (owned.has(gearId)) continue;
 
-      const missing = missingPrerequisites(definition, view.builds);
-      const affordable = canAffordBuild(definition.cost, view.inventory);
+      const missing = missingPrerequisites(definition, view.gear);
+      const affordable = canAffordCost(definition.cost, view.inventory);
       const locked = missing.length > 0;
       const card = document.createElement("div");
-      card.className = locked ? "build-card locked" : "build-card";
+      card.className = locked ? "recipe-card locked" : "recipe-card";
 
       const main = document.createElement("div");
-      main.className = "build-card-main";
+      main.className = "recipe-card-main";
 
       const label = document.createElement("div");
-      label.className = "build-card-label";
+      label.className = "recipe-card-label";
       label.textContent = definition.label;
 
       const blurb = document.createElement("div");
-      blurb.className = "build-card-blurb";
+      blurb.className = "recipe-card-blurb";
       blurb.textContent = definition.blurb;
 
       const meta = document.createElement("div");
       meta.className =
-        !locked && affordable ? "build-card-meta ready" : "build-card-meta";
+        !locked && affordable ? "recipe-card-meta ready" : "recipe-card-meta";
       if (locked) {
         const names = missing
-          .map((id) => BUILD_DEFINITIONS[id].label)
+          .map((id) => GEAR_DEFINITIONS[id].label)
           .join(", ");
         meta.textContent = `Requires ${names}`;
       } else {
-        meta.textContent = formatBuildCost(definition.cost);
+        meta.textContent = formatCargoCost(definition.cost);
       }
 
       main.append(label, blurb, meta);
 
       const button = document.createElement("button");
       button.type = "button";
-      button.textContent = "BUILD";
+      button.textContent = "INSTALL";
       button.disabled = locked || !affordable;
       button.addEventListener("click", () => {
-        boundActions?.onBuildItem(buildId);
+        boundActions?.onInstallGear(gearId);
       });
 
       card.append(main, button);
-      elements.buildRecipes.append(card);
+      elements.gearRecipes.append(card);
     }
 
-    const installedIds = BUILD_ORDER.filter((id) => owned.has(id));
+    const installedIds = GEAR_ORDER.filter((id) => owned.has(id));
     const hasInstalled = installedIds.length > 0;
-    elements.buildInstalledEmpty.classList.toggle("hidden", hasInstalled);
-    elements.buildInstalled.classList.toggle("hidden", !hasInstalled);
+    elements.gearInstalledEmpty.classList.toggle("hidden", hasInstalled);
+    elements.gearInstalled.classList.toggle("hidden", !hasInstalled);
 
-    for (const buildId of installedIds) {
-      const definition = BUILD_DEFINITIONS[buildId];
+    for (const gearId of installedIds) {
+      const definition = GEAR_DEFINITIONS[gearId];
       const card = document.createElement("div");
-      card.className = "build-card installed";
+      card.className = "recipe-card installed";
 
       const main = document.createElement("div");
-      main.className = "build-card-main";
+      main.className = "recipe-card-main";
 
       const label = document.createElement("div");
-      label.className = "build-card-label";
+      label.className = "recipe-card-label";
       label.textContent = definition.label;
 
       const blurb = document.createElement("div");
-      blurb.className = "build-card-blurb";
+      blurb.className = "recipe-card-blurb";
       blurb.textContent = definition.blurb;
 
       const meta = document.createElement("div");
-      meta.className = "build-card-meta ready";
+      meta.className = "recipe-card-meta ready";
       meta.textContent = "Installed";
 
       main.append(label, blurb, meta);
       card.append(main);
-      elements.buildInstalled.append(card);
+      elements.gearInstalled.append(card);
+    }
+  }
+
+  function updateBuildMenu(view: BuildMenuView): void {
+    elements.buildRecipes.replaceChildren();
+
+    const placedByBlueprint = new Map<BlueprintId, number>();
+    for (const entry of view.structures) {
+      placedByBlueprint.set(
+        entry.blueprintId,
+        (placedByBlueprint.get(entry.blueprintId) ?? 0) + 1,
+      );
+    }
+
+    for (const blueprintId of BLUEPRINT_ORDER) {
+      const definition = BLUEPRINT_DEFINITIONS[blueprintId];
+      const affordable = canAffordCost(definition.cost, view.inventory);
+      const placed = placedByBlueprint.get(blueprintId) ?? 0;
+      const atLimit = placed >= definition.maxPerPlanet;
+      const card = document.createElement("div");
+      card.className = atLimit ? "recipe-card locked" : "recipe-card";
+
+      const main = document.createElement("div");
+      main.className = "recipe-card-main";
+
+      const label = document.createElement("div");
+      label.className = "recipe-card-label";
+      label.textContent = definition.label;
+
+      const blurb = document.createElement("div");
+      blurb.className = "recipe-card-blurb";
+      blurb.textContent = definition.blurb;
+
+      const meta = document.createElement("div");
+      meta.className =
+        !atLimit && affordable ? "recipe-card-meta ready" : "recipe-card-meta";
+      if (atLimit) {
+        meta.textContent = `Planet limit ${placed}/${definition.maxPerPlanet}`;
+      } else {
+        meta.textContent = `${formatCargoCost(definition.cost)} · ${placed}/${definition.maxPerPlanet} on planet`;
+      }
+
+      main.append(label, blurb, meta);
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "FABRICATE";
+      button.disabled = atLimit || !affordable;
+      button.addEventListener("click", () => {
+        boundActions?.onFabricate(blueprintId);
+      });
+
+      card.append(main, button);
+      elements.buildRecipes.append(card);
     }
   }
 
@@ -792,6 +863,7 @@ export function createUI(): UI {
   function showPlaying(): void {
     elements.startOverlay.classList.add("hidden");
     elements.inventoryOverlay.classList.add("hidden");
+    elements.gearOverlay.classList.add("hidden");
     elements.buildOverlay.classList.add("hidden");
     elements.profileOverlay.classList.add("hidden");
     elements.commandOverlay.classList.add("hidden");
@@ -871,6 +943,7 @@ export function createUI(): UI {
       "click",
       actions.onToggleInventory,
     );
+    elements.gearClose.addEventListener("click", actions.onToggleGearMenu);
     elements.buildClose.addEventListener(
       "click",
       actions.onToggleBuildMenu,
@@ -884,7 +957,12 @@ export function createUI(): UI {
     )) {
       tab.addEventListener("click", () => {
         const menu = tab.dataset.menu;
-        if (menu === "inventory" || menu === "build" || menu === "profile") {
+        if (
+          menu === "inventory" ||
+          menu === "gear" ||
+          menu === "build" ||
+          menu === "profile"
+        ) {
           actions.onOpenMenu(menu);
         }
       });
@@ -925,11 +1003,13 @@ export function createUI(): UI {
     setFuel,
     setFlightSpeed,
     setInventoryVisible,
+    setGearMenuVisible,
     setBuildMenuVisible,
     setProfileVisible,
     setCommandBarVisible,
     setCommandFeedback,
     updateProfile,
+    updateGearMenu,
     updateBuildMenu,
     setMiningProgress,
     setTargetLabel,
