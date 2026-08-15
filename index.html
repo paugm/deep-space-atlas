@@ -5,7 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Deep Space Atlas, a procedural first-person mining and exploration game."
+      content="Deep Space Atlas, a procedural first-person mining and exploration game. Open a planet with ?seed=."
+    />
+    <meta property="og:title" content="Deep Space Atlas" />
+    <meta
+      property="og:description"
+      content="Procedural first-person mining and exploration. A 32-bit seed builds the world — share one with ?seed=."
+    />
+    <meta property="og:url" content="https://deepspaceatlas.net/" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Deep Space Atlas" />
+    <meta
+      name="twitter:description"
+      content="Procedural first-person mining and exploration. Share a planet with ?seed=."
     />
     <title>Deep Space Atlas: Procedural Survey</title>
     <link
@@ -154,7 +167,7 @@
 
     <div id="notifs"></div>
 
-    <div id="startOverlay" class="overlay">
+    <div id="startOverlay" class="overlay" aria-busy="true">
       <div class="panel">
         <div class="eyebrow">PROTOCOL %APP_VERSION%</div>
         <h1 id="startTitle">Deep Space Atlas</h1>
@@ -180,14 +193,14 @@
         </div>
 
         <div class="btnrow btnrow-primary">
-          <button id="btnPlay" type="button">CONTINUE</button>
+          <button id="btnPlay" type="button" disabled>CONTINUE</button>
         </div>
         <div class="btnrow btnrow-secondary">
           <button id="btnSaveGame" type="button" class="hidden">
             SAVE GAME
           </button>
-          <button id="btnLoadGame" type="button">LOAD GAME</button>
-          <button id="btnNewGame" type="button">NEW GAME</button>
+          <button id="btnLoadGame" type="button" disabled>LOAD GAME</button>
+          <button id="btnNewGame" type="button" disabled>NEW GAME</button>
         </div>
         <input
           id="gameFileInput"

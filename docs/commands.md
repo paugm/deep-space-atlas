@@ -118,9 +118,10 @@ Do not surface command catalogs or usage cheat-sheets in failure text.
 
 ### Seed arguments
 
-Use `hexToSeed` and `seedToHex` from `js/planet-save.ts`. There should be one
-seed parser. Invalid hex can return a clear or atmospheric message; travel uses
-`UNKNOWN_SEED_MESSAGE`.
+Use `hexToSeed` and `seedToHex` from `js/planet-save.ts`. Shareable links go
+through `parseSeedParam` / `applySeedParam` in `js/planet-url.ts`, which call
+those helpers. There should be one seed parser. Invalid hex can return a
+clear or atmospheric message; travel uses `UNKNOWN_SEED_MESSAGE`.
 
 ### Placement / world mutations
 
@@ -129,8 +130,9 @@ seed parser. Invalid hex can return a clear or atmospheric message; travel uses
   `kind: "parked-ship"` and restored on open.
 - Rovers: `RoverSystem.spawnAhead(world, kind, from, meters)` adds an instance;
   poses are stored as multi `kind: "rover"` entities when spawned or after exit.
-- Opening another planet: `loadWorld(seed, { showStartOverlay: false })` via
-  the host, same as profile travel.
+- Opening another planet: `loadWorld(seed)` via the host, same as profile
+  travel. After open, a locked pointer resumes play; otherwise the start
+  overlay appears.
 
 ## Non-goals
 

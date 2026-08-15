@@ -1404,16 +1404,20 @@ export function createGameplay({
   }
 
   function setActive(nextActive: boolean): void {
-    if (active === nextActive) return;
-    active = nextActive;
-    if (!active) {
+    if (!nextActive) {
+      if (!active) return;
+      active = false;
       clearHeldInput();
       hideMiningEffects();
       ui.setMiningProgress(0);
       ui.setTargetLabel("");
       return;
     }
-    // A retained pointer lock (landing hand-off) resumes play directly.
+
+    active = true;
+    // Re-read lock: CONTINUE during generate, or a landing hand-off, can
+    // leave the pointer locked while `started` was reset with the world.
+    locked = document.pointerLockElement === renderer.domElement;
     if (locked) {
       started = true;
       closeOverlays();

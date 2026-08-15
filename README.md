@@ -42,7 +42,7 @@ see [`CREDITS.md`](CREDITS.md).
 
 <pre>
 ┌──────────────────────────────────────────────────────────────┐
-│  DEEP SPACE ATLAS //// SPEC SHEET                   v0.21.0  │
+│  DEEP SPACE ATLAS //// SPEC SHEET                   v0.21.1  │
 ├──────────────────────────────────────────────────────────────┤
 │  WORLDS                                                      │
 │    PLANETS ........ 4,294,967,296                            │
@@ -120,6 +120,8 @@ big explored worlds do not rebuild every dig on load.
 
 **Online:** [deepspaceatlas.net](https://deepspaceatlas.net/)
 (GitHub Pages behind that domain; rebuilds on every push to `main`).
+Append `?seed=DEADBEEF` (8-digit hex) to open that planet; the address bar
+stays in sync as you travel.
 
 **Local:**
 

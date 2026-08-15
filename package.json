@@ -1,6 +1,6 @@
 {
   "name": "deep-space-atlas",
-  "version": "0.21.0",
+  "version": "0.21.1",
   "private": true,
   "license": "MIT",
   "description": "First-person mining and exploration in the browser. A 32-bit seed builds the terrain, biome, resources, decoration, planet name, and spawn.",
@@ -18,10 +18,10 @@
     "threejs-psx-shader": "github:lferreira457/threejs-psx-shader"
   },
   "devDependencies": {
-    "@types/node": "26.1.1",
-    "@types/three": "0.185.1",
+    "@types/node": "26.2.0",
+    "@types/three": "0.185.4",
     "typescript": "7.0.2",
-    "vite": "8.1.5",
+    "vite": "8.2.1",
     "vitest": "4.1.10"
   },
   "engines": {

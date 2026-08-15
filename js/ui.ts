@@ -107,6 +107,11 @@ export interface UI {
   showFatal(title: string, message: string): void;
   showOverlay(mode: "start" | "paused"): void;
   showPlaying(): void;
+  /**
+   * CONTINUE / LOAD / NEW GAME stay off until a planet exists. Generation
+   * also restores the "GENERATING TERRAIN…" subtitle.
+   */
+  setSessionReady(ready: boolean): void;
   updateInventory(inventory: Inventory): void;
   updateInventoryViews(inventory: Inventory): void;
   revealGameHud(): void;
@@ -561,6 +566,16 @@ export function createUI(): UI {
       "aria-hidden",
       active ? "false" : "true",
     );
+  }
+
+  function setSessionReady(ready: boolean): void {
+    elements.playButton.disabled = !ready;
+    elements.loadGameButton.disabled = !ready;
+    elements.newGameButton.disabled = !ready;
+    elements.startOverlay.setAttribute("aria-busy", ready ? "false" : "true");
+    if (!ready) {
+      elements.startSubtitle.textContent = "GENERATING TERRAIN…";
+    }
   }
 
   function showOverlay(mode: "start" | "paused"): void {
@@ -1022,6 +1037,7 @@ export function createUI(): UI {
     showFatal,
     showOverlay,
     showPlaying,
+    setSessionReady,
     updateInventory,
     updateInventoryViews,
     revealGameHud(): void {

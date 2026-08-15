@@ -14,6 +14,7 @@ import { computePetCompass } from "./fauna/compass.ts";
 import { createFaunaSystem } from "./fauna/system.ts";
 import { createGameplay } from "./gameplay.ts";
 import { createPlanetSession, createPlanetStore, hexToSeed, seedToHex } from "./planet-save.ts";
+import { applySeedParam, parseSeedParam } from "./planet-url.ts";
 import {
   createEmptyPlayerProfile,
   createProfileSession,
@@ -168,6 +169,13 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     return document.pointerLockElement === webglRenderer.domElement;
   }
 
+  function syncSeedUrl(seed: number): void {
+    const nextSearch = applySeedParam(window.location.search, seed);
+    if (window.location.search === nextSearch) return;
+    const next = `${window.location.pathname}${nextSearch}${window.location.hash}`;
+    window.history.replaceState(null, "", next);
+  }
+
   function refreshProfileUi(): void {
     const current = worldSystem.current;
     ui.updateProfile(
@@ -303,11 +311,9 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     });
   }
 
-  async function openPlanetWorld(
-    seed: number,
-    options: { showStartOverlay: boolean } = { showStartOverlay: true },
-  ): Promise<void> {
+  async function openPlanetWorld(seed: number): Promise<void> {
     spaceSystem.setActive(false);
+    ui.setSessionReady(false);
     // Flush the outgoing planet (with live pose capture) before tearing down
     // session visuals that onBeforeFlush still needs.
     await profileSession.flush();
@@ -357,19 +363,18 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     gameplay.loadGear(profileSession.get().gear);
     noteVisit(world);
     showWorldSummary(world);
+    syncSeedUrl(world.seed);
     mode = "planet";
     Sound.setSpaceBed(false);
     Sound.setUnderwater(false);
     ui.setHudMode("planet");
     gameplay.setActive(true);
-    if (options.showStartOverlay) ui.showOverlay("start");
+    ui.setSessionReady(true);
+    if (!isPointerLocked()) ui.showOverlay("start");
   }
 
-  function loadWorld(
-    seed: number,
-    options: { showStartOverlay: boolean } = { showStartOverlay: true },
-  ): Promise<void> {
-    loadChain = loadChain.then(() => openPlanetWorld(seed, options));
+  function loadWorld(seed: number): Promise<void> {
+    loadChain = loadChain.then(() => openPlanetWorld(seed));
     return loadChain;
   }
 
@@ -382,6 +387,7 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     gameplay.setActive(false);
     spaceSystem.enterNearSeed(seed);
     spaceSystem.setActive(true);
+    syncSeedUrl(seed);
     ui.setHudMode("space");
     ui.setScanReadout(null);
     ui.showPlaying();
@@ -399,8 +405,7 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     spaceSystem.beginApproach(seed);
     await cinema.playLand();
     spaceSystem.setActive(false);
-    await loadWorld(seed, { showStartOverlay: false });
-    if (!isPointerLocked()) ui.showOverlay("start");
+    await loadWorld(seed);
     cinema.clear();
   }
 
@@ -611,8 +616,7 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
       spawnSpaceshipAhead,
       spawnRoverAhead,
       async travelToSeed(seed) {
-        await loadWorld(seed, { showStartOverlay: false });
-        if (!isPointerLocked()) ui.showOverlay("start");
+        await loadWorld(seed);
       },
       currentSeed: () => {
         const world = worldSystem.current;
@@ -687,12 +691,13 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     gameplay.loadInventory(snapshot.profile.inventory);
     gameplay.loadGear(snapshot.profile.gear);
     if (resumeSeed !== null) {
-      await openPlanetWorld(resumeSeed, { showStartOverlay: false });
+      await openPlanetWorld(resumeSeed);
     }
   }
 
   const actions: UIActions = {
     onPlay(): void {
+      if (worldSystem.current === null) return;
       gameplay.requestPointerLock();
     },
     onToggleInventory(): void {
@@ -807,8 +812,7 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
         return;
       }
       Sound.resume();
-      void loadWorld(seed, { showStartOverlay: false }).then(() => {
-        if (!isPointerLocked()) ui.showOverlay("start");
+      void loadWorld(seed).then(() => {
         ui.notify(`TRAVELING TO ${seedHex}`, "#7df0cf");
       });
     },
@@ -957,9 +961,11 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     applyProfileMute();
     gameplay.loadInventory(profileSession.get().inventory);
     gameplay.loadGear(profileSession.get().gear);
+    const urlSeed = parseSeedParam(window.location.search);
     const lastSeedHex = lastVisitedSeedHex(profileSession.get().visited);
     const resumeSeed =
-      lastSeedHex !== null ? hexToSeed(lastSeedHex) : null;
+      urlSeed ??
+      (lastSeedHex !== null ? hexToSeed(lastSeedHex) : null);
     return loadWorld(resumeSeed ?? randomSeed());
   }).then(() => {
     ui.revealGameHud();

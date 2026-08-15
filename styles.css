@@ -638,6 +638,17 @@ button:active {
   transform: translateY(1px);
 }
 
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+button:disabled:hover {
+  box-shadow: none;
+}
+
 #btnPlay {
   color: var(--accent-ink);
   background: var(--accent);
@@ -647,6 +658,10 @@ button:active {
   box-shadow: 0 0 24px rgba(125, 240, 207, 0.45);
 }
 
+#btnPlay:disabled:hover {
+  box-shadow: none;
+}
+
 #btnNewGame {
   color: var(--accent);
   background: transparent;
@@ -654,6 +669,10 @@ button:active {
 
 #btnNewGame:hover {
   background: rgba(125, 240, 207, 0.08);
+}
+
+#btnNewGame:disabled:hover {
+  background: transparent;
 }
 
 .footnote {

@@ -39,7 +39,9 @@ uses `base: "./"`, which works at the site root.
 
 Play URL: [https://deepspaceatlas.net/](https://deepspaceatlas.net/)
 (custom domain on GitHub Pages; `www` optional). DNS and Pages custom-domain
-setup happen once the repo is public.
+setup happen once the repo is public. A `?seed=` query (8-digit hex, same as
+`/travel`) opens that planet on boot and stays in sync after travel, land,
+launch, and new game. Campaign cargo still lives in IndexedDB.
 
 ## Architecture
 
@@ -58,6 +60,7 @@ setup happen once the repo is public.
 | Fauna | `js/fauna/` | Wild walkers, tame/follow, pet entities |
 | Vehicles | `js/vehicles/` | Seeded rovers, board/drive, rover entities |
 | Planet save | `js/planet-save.ts` | Per-seed patches in IndexedDB |
+| Planet URL | `js/planet-url.ts` | `?seed=` parse / serialize (pure) |
 | Profile | `js/player-profile.ts` | Callsign, cargo, playtime, audio mute, gear, visits |
 | Gear | `js/gear.ts` | Permanent upgrade catalog, costs, stacked modifiers (pure) |
 | Blueprints | `js/blueprints.ts` | Placeable structure recipes and fabricate cost (pure) |
@@ -90,7 +93,7 @@ cockpit takeoff camera ride, and `cinema.ts` draws the black-fade overlay.
 ```text
 config.ts
   ├── js/cargo-cost.ts · js/gear.ts · js/blueprints.ts · js/world/* · gameplay.ts · collision.ts · water.ts
-  ├── planet-save.ts · player-profile.ts · game-save.ts · ui.ts · js/commands/*
+  ├── planet-save.ts · js/planet-url.ts · player-profile.ts · game-save.ts · ui.ts · js/commands/*
 
 audio.ts (+ catalog / rules) ──> gameplay.ts / js/space/* / cinema.ts
 world.ts ───────> gameplay.ts · js/space/*   (re-export / types)
@@ -111,6 +114,10 @@ through the injected `worldSystem`.
 
 ### Opening a world (`main.ts`)
 
+Boot prefers `?seed=` (`js/planet-url.ts`) over the last visited planet, then
+a random seed. CONTINUE / LOAD / NEW GAME stay disabled with “GENERATING
+TERRAIN…” until `open` finishes.
+
 1. Flush the previous planet save (capturing the live player, ship, and pet)
    and profile when active. Suspend the planet session when leaving for space.
 2. Load patch for seed from IndexedDB
@@ -126,8 +133,9 @@ through the injected `worldSystem`.
 6. Reset player and mining. Restore the saved pose when present, then cargo
    from the profile.
 7. Record the visit on the profile.
-8. Send metadata to the HUD.
-9. Show the start overlay.
+8. Send metadata to the HUD and write `?seed=` into the address bar.
+9. If the pointer is already locked (CONTINUE during generate, or a landing
+   hand-off), resume play; otherwise show the start overlay.
 
 ### Modes and frame loop
 
@@ -461,8 +469,8 @@ actors in a cave: one XZ coordinate can have several surfaces.
 Vitest covers pure deterministic logic under `tests/`: config math, saves,
 cave brush/chunk math, field raycasts, capsule collision, mesh extraction,
 world helpers, space math, land/launch cinematic curves, fauna, vehicles,
-commands, gear, blueprints / structures, planet entities, audio catalog and mapping
-helpers, and mute gain.
+commands, gear, blueprints / structures, planet entities, shareable `?seed=`
+URLs, audio catalog and mapping helpers, and mute gain.
 
 Do not build brittle mocks around Three.js, Web Audio graphs, the DOM, or all
 of `main` / `gameplay` / `ui`. Pull out helpers when a rule needs coverage. Add
