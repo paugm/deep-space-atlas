@@ -87,6 +87,8 @@ describe("builtin commands", () => {
     buildItem: ReturnType<typeof vi.fn>;
     installGear: ReturnType<typeof vi.fn>;
     adoptPet: ReturnType<typeof vi.fn>;
+    enlistCrew: ReturnType<typeof vi.fn>;
+    releaseCrew: ReturnType<typeof vi.fn>;
   } {
     const spawnSpaceshipAhead = vi.fn(async (_meters: number) => undefined);
     const spawnRoverAhead = vi.fn(
@@ -117,6 +119,15 @@ describe("builtin commands", () => {
       ok: true as const,
       label: "Panda",
     }));
+    const enlistCrew = vi.fn(() => ({
+      ok: true as const,
+      label: "Panda",
+    }));
+    const releaseCrew = vi.fn(() => ({
+      ok: true as const,
+      stayedAsPet: true,
+      label: "Panda",
+    }));
     const host: CommandHost = {
       hasPlanetWorld: () => true,
       currentSeed: () => 0x11111111,
@@ -127,6 +138,8 @@ describe("builtin commands", () => {
       buildItem,
       installGear,
       adoptPet,
+      enlistCrew,
+      releaseCrew,
       ...overrides,
     };
     return {
@@ -138,6 +151,8 @@ describe("builtin commands", () => {
       buildItem,
       installGear,
       adoptPet,
+      enlistCrew,
+      releaseCrew,
     };
   }
 
@@ -373,6 +388,46 @@ describe("builtin commands", () => {
       message: "INCOMPLETE SIGNAL",
     });
     await expect(registry.dispatch("/adopt dog")).resolves.toEqual({
+      ok: false,
+      message: "INCOMPLETE SIGNAL",
+    });
+  });
+
+  it("enlists and releases traveling crew", async () => {
+    const { host, enlistCrew, releaseCrew } = createHost();
+    const registry = createCommandRegistry(createBuiltinCommands(host));
+
+    await expect(registry.dispatch("/crew enlist")).resolves.toEqual({
+      ok: true,
+      message: "CREW ENLISTED · PANDA",
+    });
+    expect(enlistCrew).toHaveBeenCalledTimes(1);
+
+    await expect(registry.dispatch("/crew release")).resolves.toEqual({
+      ok: true,
+      message: "CREW SETTLED · PANDA",
+    });
+    expect(releaseCrew).toHaveBeenCalledTimes(1);
+
+    enlistCrew.mockReturnValueOnce({
+      ok: false as const,
+      reason: "no-pet" as const,
+    });
+    await expect(registry.dispatch("/crew enlist")).resolves.toEqual({
+      ok: false,
+      message: "NO COMPANION TO ENLIST",
+    });
+
+    releaseCrew.mockReturnValueOnce({
+      ok: false as const,
+      reason: "no-crew" as const,
+    });
+    await expect(registry.dispatch("/crew release")).resolves.toEqual({
+      ok: false,
+      message: "NO CREW ABOARD",
+    });
+
+    await expect(registry.dispatch("/crew")).resolves.toEqual({
       ok: false,
       message: "INCOMPLETE SIGNAL",
     });

@@ -3,6 +3,7 @@ export {
   FAUNA_SPECIES,
   isFaunaSpeciesId,
   pickRandomFaunaSpecies,
+  type CreatureRole,
   type FaunaSpeciesDefinition,
   type FaunaSpeciesId,
 } from "./species.ts";
@@ -18,6 +19,7 @@ export {
   FAUNA_WALK_SPEED,
   PET_FOLLOW_SPEED,
   TAME_TIME,
+  ENLIST_TIME,
   petWaitPose,
   stepFollow,
   stepWander,

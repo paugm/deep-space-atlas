@@ -229,6 +229,18 @@ export const JET_BURN_SECONDS = 3.2;
 export const JET_RECHARGE_SECONDS = 2.2;
 export const JET_MAX_VERTICAL_SPEED = 16;
 
+/** Radians per mouse pixel at look sensitivity 1. */
+export const LOOK_SENSITIVITY_BASE = 0.0022;
+export const LOOK_SENSITIVITY_MIN = 0.4;
+export const LOOK_SENSITIVITY_MAX = 2;
+export const LOOK_SENSITIVITY_DEFAULT = 1;
+
+export function normalizeLookSensitivity(value: number): number {
+  if (!Number.isFinite(value)) return LOOK_SENSITIVITY_DEFAULT;
+  const clamped = clamp(value, LOOK_SENSITIVITY_MIN, LOOK_SENSITIVITY_MAX);
+  return Math.round(clamped * 100) / 100;
+}
+
 export const MATERIALS: Record<MaterialId, MaterialDefinition> = {
   silicate: { label: "Silicate", color: "#d8c28e" },
   iron: {

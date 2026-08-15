@@ -208,6 +208,20 @@ canvas {
   font-weight: 700;
 }
 
+#navMapWrap {
+  top: 16px;
+  right: 16px;
+  padding: 6px;
+}
+
+#navMap {
+  display: block;
+  width: 148px;
+  height: 148px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
 #fuelBox {
   bottom: 60px;
   left: 50%;
@@ -865,6 +879,90 @@ button:disabled:hover {
   gap: 8px;
 }
 
+.profile-look-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.profile-look-row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+#profileLookValue {
+  min-width: 3.2em;
+  color: var(--accent);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-align: right;
+}
+
+.profile-check {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 18px;
+  color: var(--ink);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
+.profile-check input {
+  accent-color: var(--accent);
+}
+
+.profile-crew {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.profile-crew-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.profile-crew-meta {
+  min-width: 0;
+}
+
+.profile-atlas {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.profile-atlas-card {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: rgba(125, 240, 207, 0.04);
+}
+
+.profile-atlas-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.profile-atlas-card span {
+  display: block;
+  padding: 6px 8px;
+  overflow: hidden;
+  color: var(--dim);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .profile-name-row input {
   flex: 1;
   min-width: 0;
@@ -1159,7 +1257,8 @@ button:disabled:hover {
 body.space-mode #resBox,
 body.space-mode #hintBar,
 body.space-mode #roverHintBar,
-body.space-mode #petCompass {
+body.space-mode #petCompass,
+body.space-mode #navMapWrap {
   display: none;
 }
 
@@ -1230,4 +1329,11 @@ body.rover-mode #promptBar {
 
 #cinema.opaque {
   opacity: 1;
+}
+
+body.photo-mode #hud,
+body.photo-mode #reticle,
+body.photo-mode #roverCockpit,
+body.photo-mode #notifs {
+  visibility: hidden;
 }

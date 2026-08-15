@@ -40,6 +40,7 @@ interface RoverRuntime {
   kind: RoverKindId;
   root: THREE.Group;
   model: THREE.Object3D;
+  headlight: THREE.SpotLight;
 }
 
 export interface RoverSystem {
@@ -89,6 +90,8 @@ export interface RoverSystem {
   getSaveEntities(): PlanetEntity[];
   /** Only unboarded rovers block the player. */
   getCollisionAabbs(): AabbCollider[];
+  setHeadlights(on: boolean): void;
+  getBoardedRoot(): THREE.Object3D | null;
 }
 
 export function createRoverSystem(): RoverSystem {
@@ -164,6 +167,20 @@ export function createRoverSystem(): RoverSystem {
     const root = new THREE.Group();
     root.name = `rover:${pose.id}`;
     root.add(model);
+    const headlight = new THREE.SpotLight(
+      0xfff1d0,
+      0,
+      42,
+      Math.PI / 6.5,
+      0.4,
+      1.1,
+    );
+    headlight.position.set(0, 1.15, 0.35);
+    const headlightTarget = new THREE.Object3D();
+    headlightTarget.position.set(0, 0.35, -14);
+    root.add(headlight);
+    root.add(headlightTarget);
+    headlight.target = headlightTarget;
     groundRoot(root, model, scale, bounds.min.y, pose.x, pose.z, pose.yaw);
     active.group.add(root);
 
@@ -172,6 +189,7 @@ export function createRoverSystem(): RoverSystem {
       kind: pose.kind,
       root,
       model,
+      headlight,
     });
   }
 
@@ -283,6 +301,7 @@ export function createRoverSystem(): RoverSystem {
     boardedId = id;
     // Hide the hull so the cabin does not fill the camera.
     rover.model.visible = false;
+    rover.headlight.intensity = 2.6;
     return {
       speed: ROVER_DRIVE_SPEED,
       eyeHeight: ROVER_SEAT_HEIGHT,
@@ -305,6 +324,7 @@ export function createRoverSystem(): RoverSystem {
     if (rover === null) return null;
 
     rover.model.visible = true;
+    rover.headlight.intensity = 0;
     const yaw = rover.root.rotation.y;
     // Step off to the right of the hull.
     const standX = rover.root.position.x + Math.cos(yaw) * 2.2;
@@ -381,6 +401,21 @@ export function createRoverSystem(): RoverSystem {
     return hulls;
   }
 
+  function setHeadlights(on: boolean): void {
+    for (const rover of rovers) {
+      if (rover.id !== boardedId) {
+        rover.headlight.intensity = 0;
+        continue;
+      }
+      rover.headlight.intensity = on ? 2.6 : 0;
+    }
+  }
+
+  function getBoardedRoot(): THREE.Object3D | null {
+    if (boardedId === null) return null;
+    return findRover(boardedId)?.root ?? null;
+  }
+
   return {
     sync,
     clear,
@@ -394,5 +429,7 @@ export function createRoverSystem(): RoverSystem {
     spawnAhead,
     getSaveEntities,
     getCollisionAabbs,
+    setHeadlights,
+    getBoardedRoot,
   };
 }

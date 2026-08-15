@@ -69,6 +69,12 @@ export interface CommandHost {
     | { ok: true; label: string }
     | { ok: false; reason: "has-pet" | "no-world" }
   >;
+  enlistCrew():
+    | { ok: true; label: string }
+    | { ok: false; reason: "no-pet" | "no-world" };
+  releaseCrew():
+    | { ok: true; stayedAsPet: boolean; label: string }
+    | { ok: false; reason: "no-crew" };
 }
 
 export function createBuiltinCommands(
@@ -313,5 +319,60 @@ export function createBuiltinCommands(
     },
   };
 
-  return [spawn, travel, mute, build, gear, gimme, adopt];
+  const crew: CommandDefinition = {
+    name: "crew",
+    usage: "/crew enlist|release",
+    description:
+      "Enlist the planet pet as traveling crew, or release crew on this world",
+    run(args) {
+      if (args.length !== 1 || args[0] === undefined) {
+        return { ok: false, message: "INCOMPLETE SIGNAL" };
+      }
+      const action = args[0].toLowerCase();
+      if (action === "enlist") {
+        const result = host.enlistCrew();
+        if (!result.ok) {
+          switch (result.reason) {
+            case "no-pet":
+              return { ok: false, message: "NO COMPANION TO ENLIST" };
+            case "no-world":
+              return {
+                ok: false,
+                message: "NO PLANET UNDERFOOT — LAND FIRST",
+              };
+            default: {
+              const exhaustive: never = result.reason;
+              throw new Error(`Unhandled crew reason: ${String(exhaustive)}`);
+            }
+          }
+        }
+        return {
+          ok: true,
+          message: `CREW ENLISTED · ${result.label.toUpperCase()}`,
+        };
+      }
+      if (action === "release") {
+        const result = host.releaseCrew();
+        if (!result.ok) {
+          switch (result.reason) {
+            case "no-crew":
+              return { ok: false, message: "NO CREW ABOARD" };
+            default: {
+              const exhaustive: never = result.reason;
+              throw new Error(`Unhandled crew reason: ${String(exhaustive)}`);
+            }
+          }
+        }
+        return {
+          ok: true,
+          message: result.stayedAsPet
+            ? `CREW SETTLED · ${result.label.toUpperCase()}`
+            : `CREW DISMISSED · ${result.label.toUpperCase()}`,
+        };
+      }
+      return { ok: false, message: "INCOMPLETE SIGNAL" };
+    },
+  };
+
+  return [spawn, travel, mute, build, gear, gimme, adopt, crew];
 }

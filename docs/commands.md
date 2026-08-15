@@ -33,6 +33,8 @@ a short rejection message, never a list of commands.
 | `/gear <token>` | Install commander gear without spending cargo (same effect as Gear). Tokens match recipe ids such as `thruster-coil-i`. Already-owned or unknown tokens are rejected. |
 | `/gimme everything` | Install every gear recipe without spending cargo. Idempotent if some or all are already owned. |
 | `/adopt pet` | Spawn a random companion pet near the player. Fails with an error if this planet already has a pet. Requires a loaded planet. |
+| `/crew enlist` | Copy the planet pet onto the profile as traveling crew. Fails if there is no pet. |
+| `/crew release` | Drop traveling crew. If this planet has no pet, the crew becomes the local companion; otherwise the extra follower is dismissed. |
 
 Leading `/` is optional. Names are case-insensitive.
 
@@ -64,13 +66,14 @@ Submit ──────► ui.onCommandSubmit(line)
            · buildItem
            · installGear
            · adoptPet
+           · enlistCrew / releaseCrew
 ```
 
 | Module | Role |
 | --- | --- |
 | `js/commands/parse.ts` | Pure line → `{ name, args }` |
 | `js/commands/registry.ts` | Register definitions, `dispatch`, `list` |
-| `js/commands/builtins.ts` | `/spawn`, `/travel`, `/mute`, `/build`, `/gear`, `/gimme`, `/adopt` + `CommandHost` |
+| `js/commands/builtins.ts` | `/spawn`, `/travel`, `/mute`, `/build`, `/gear`, `/gimme`, `/adopt`, `/crew` + `CommandHost` |
 | `js/commands/index.ts` | Public re-exports |
 | `js/main.ts` | Implements `CommandHost`, binds UI submit |
 | `js/gameplay.ts` | Enter / Escape / pointer-lock overlay state |

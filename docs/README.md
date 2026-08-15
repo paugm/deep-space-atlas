@@ -57,20 +57,23 @@ launch, and new game. Campaign cargo still lives in IndexedDB.
 | Collision | `js/collision.ts` | Capsule vs static sphere/AABB resolve (no physics engine) |
 | Water | `js/water.ts` | Immersion + underwater fog helpers (pure) |
 | Player entity | `js/player-entity.ts` | Saved commander pose helpers for planet `entities[]` |
-| Fauna | `js/fauna/` | Wild walkers, tame/follow, pet entities |
-| Vehicles | `js/vehicles/` | Seeded rovers, board/drive, rover entities |
+| Fauna | `js/fauna/` | Wild walkers, tame/follow, traveling crew, pet entities |
+| Vehicles | `js/vehicles/` | Seeded rovers, board/drive, headlights, rover entities |
 | Planet save | `js/planet-save.ts` | Per-seed patches in IndexedDB |
 | Planet URL | `js/planet-url.ts` | `?seed=` parse / serialize (pure) |
-| Profile | `js/player-profile.ts` | Callsign, cargo, playtime, audio mute, gear, visits |
+| Profile | `js/player-profile.ts` | Callsign, cargo, playtime, mute, look, CRT comfort, crew, postcards, gear, visits |
 | Gear | `js/gear.ts` | Permanent upgrade catalog, costs, stacked modifiers (pure) |
-| Blueprints | `js/blueprints.ts` | Placeable structure recipes and fabricate cost (pure) |
-| Structures | `js/structures/` | Beacons and other field builds: place, mesh, entities |
+| Blueprints | `js/blueprints.ts` | Placeable structure recipes, fabricate cost, salvage refund (pure) |
+| Structures | `js/structures/` | Beacons and other field builds: place, salvage, mesh, entities |
+| Minimap | `js/minimap.ts` | Heightfield nav-map math (pure); UI paints `#navMap` |
+| Postcard | `js/postcard.ts` | Survey photo captions / filenames (pure) |
+| Planet radio | `js/planet-radio.ts` · `js/planet-radio-player.ts` | Seeded patch (pure) + Tone.js playback from `main.ts` |
 | Campaign file | `js/game-save.ts` | Portable `.deepspaceatlas` |
 | DB | `js/save-db.ts` | Shared IndexedDB open (`planets` + `profile`) |
 | UI | `js/ui.ts` | DOM only; callbacks to `main.ts` |
 | Commands | `js/commands/` | Slash-command parse + registry; host wired in `main.ts` |
 | Audio | `js/audio.ts` · `js/audio-catalog.ts` · `js/audio-rules.ts` | Sample-backed SFX; Kenney / rubberduck CC0 under `assets/audio/`; `Sound` singleton; mute (**M** / `/mute`) |
-| CRT | `js/crt.ts` | Shared post pipeline for planet and space |
+| CRT | `js/crt.ts` · `js/crt/` | Vendored pixelation + CRT passes (MIT, from threejs-psx-shader) |
 | Main | `js/main.ts` | App entry: mode switch, frame loop, wiring |
 | Markup / CSS | `index.html`, `styles.css` | Static structure and presentation |
 
@@ -96,6 +99,8 @@ config.ts
   ├── planet-save.ts · js/planet-url.ts · player-profile.ts · game-save.ts · ui.ts · js/commands/*
 
 audio.ts (+ catalog / rules) ──> gameplay.ts / js/space/* / cinema.ts
+js/planet-radio.ts ──> js/planet-radio-player.ts ──> main.ts (Tone.js)
+js/minimap.ts · js/postcard.ts ──> ui.ts / tests
 world.ts ───────> gameplay.ts · js/space/*   (re-export / types)
 js/gear.ts ──> gameplay.ts · player-profile.ts · ui.ts · js/commands/*
 js/blueprints.ts · js/structures/* ──> gameplay.ts · planet-save.ts · ui.ts · js/commands/*
@@ -127,9 +132,9 @@ TERRAIN…” until `open` finishes.
 4. `await applyPlanetPatch`: apply legacy height edits in yielded batches, then
    apply deposits, index saved cave brushes, and initialize the cave worker
    without building every saved cave mesh.
-5. Sync fauna and the pet. Sync rovers from `entities[]` or the seeded
+5. Sync fauna and the pet, then traveling crew from the profile. Sync rovers from `entities[]` or the seeded
    `roverPlan`; sync field structures from `entities[]`; place the parked ship
-   from `entities[]` or its default pad.
+   from `entities[]` or its default pad. Paint the nav map and start planet radio.
 6. Reset player and mining. Restore the saved pose when present, then cargo
    from the profile.
 7. Record the visit on the profile.
@@ -144,8 +149,10 @@ renders on the shared CRT renderer each frame. Input is gated by
 `gameplay.setActive` and `spaceSystem.setActive`.
 
 On `planet`, update gameplay, fauna and the nav compass (nearest structure,
-else pet), rover driving, and day/night (using camera Y underwater). Then handle
-the aim, mine, and board prompt before rendering the planet.
+else crew, else pet), rover driving, the heightfield nav map (**N**), and
+day/night (using camera Y underwater). Then handle the aim, mine/salvage, and
+board prompt before rendering the planet. **F** hides HUD for one extra CRT
+frame and stamps a survey postcard.
 
 On `space` and `landing`, fly, stream proxies, scan, and render space. Landing
 freezes the camera while the hull leaves in third person. On `launch`, the
@@ -299,17 +306,22 @@ in planet patches. The space cockpit pose is not persisted.
 
 #### Profile
 
-The profile holds callsign, cargo, playtime, master audio mute, installed
-gear, and visited planets. Mute is off by default, so sound is on;
-**M** / `/mute` saves the choice here. Gear is permanent profile upgrades
-(see [`gear.md`](gear.md)); **G** opens Gear. Field structures use **B** /
-Build (see [`blueprints.md`](blueprints.md)). Cargo (**I**), Gear (**G**),
-Build (**B**), and Profile (**P**) share a tab strip so you can jump between
-them without closing. The profile lists companions (visited worlds with
-`hasPet`) above the visited-planet index; pets remain planet-bound in
-`entities[]`. The profile document version is `PLAYER_PROFILE_VERSION` (4).
-Loading v1 adds `muted: false` and empty `gear`; loading v2 adds empty `gear`;
-loading v3 migrates `builds` → `gear`.
+The profile holds callsign, cargo, playtime, master audio mute, look
+sensitivity (0.4–2.0), CRT comfort, traveling crew, a local survey atlas
+(up to 12 postcard thumbs), installed gear, and visited planets. Mute is
+off by default, so sound is on; **M** / `/mute` saves the choice here.
+Look and REDUCE CRT MOTION live on Profile (**P**). Gear is permanent
+profile upgrades (see [`gear.md`](gear.md)); **G** opens Gear. Field
+structures use **B** / Build (see [`blueprints.md`](blueprints.md)). Cargo
+(**I**), Gear (**G**), Build (**B**), and Profile (**P**) share a tab strip
+so you can jump between them without closing. The profile lists traveling
+crew, companions (visited worlds with `hasPet`), the visited-planet index,
+and the survey atlas. Pets remain planet-bound in `entities[]`; crew
+travels on the profile. The profile document version is
+`PLAYER_PROFILE_VERSION` (5). Loading v1 adds `muted: false` and empty
+`gear`; loading v2 adds empty `gear`; loading v3 migrates `builds` →
+`gear`; loading v4 adds default look sensitivity, CRT comfort off, no crew,
+and an empty atlas.
 
 #### Portable file (`.deepspaceatlas`, `v: 2`)
 
@@ -352,14 +364,20 @@ About one fifth of seeds get `hasFauna` and 1–3 wild walkers. Hold LMB on one
 to tame it. A planet can have one pet. It walks toward you at a fixed pace
 slower than player walk and never teleports. Its planet save stores its species
 and last ground pose, then restores it with a short greeting on return.
-Playtesters can force a random companion with `/adopt pet` (see
-[`commands.md`](commands.md)); it fails if a pet is already present.
+Hold extract on your pet to **enlist** it as traveling crew (profile v5).
+Crew follows on other worlds; the home-world pet stays put so you do not get
+a duplicate. Release from Profile or `/crew release` — if this planet has no
+pet, the crew settles as the local companion. Playtesters can force a random
+companion with `/adopt pet` and `/crew enlist|release` (see
+[`commands.md`](commands.md)); adopt fails if a pet is already present.
 
-With a pet on the active world and no field structures, the top-center HUD
-compass shows its species, range, and bearing relative to look yaw
+With a pet or crew on the active world and no field structures, the top-center
+HUD compass shows its species, range, and bearing relative to look yaw
 (`js/fauna/compass.ts` + `#petCompass`). Profile (**P**) also lists companion
 worlds under COMPANIONS. When any structure is present, the compass tracks the
-nearest structure instead (see [`blueprints.md`](blueprints.md)).
+nearest structure instead (see [`blueprints.md`](blueprints.md)). **N** toggles
+a heightfield nav map (`js/minimap.ts` + `#navMap`). **F** stamps a postcard
+into the local atlas (no network).
 
 ### Field structures
 
@@ -367,9 +385,10 @@ Blueprints in **Build** (**B**) spend cargo to place structures on the active
 planet. Survey beacons are markers; **tents** and **planet bases** are walk-in
 hollow shells (door on the approach face). All use `kind: "structure"` entities
 (`data.blueprintId`). Placement is ahead of the commander, with footprint
-clearance and per-blueprint caps. Aiming at a structure shows its label.
-Shelters resolve walls in local space and raise the ground plane to the floor
-while you stand inside. See [`blueprints.md`](blueprints.md).
+clearance and per-blueprint caps. Aiming at a structure shows **HOLD LMB —
+SALVAGE**; a completed hold refunds half of each cost line (rounded down) and
+removes the instance. Shelters resolve walls in local space and raise the ground
+plane to the floor while you stand inside. See [`blueprints.md`](blueprints.md).
 
 ### Rovers
 
@@ -380,9 +399,10 @@ about 10 m and press **E** to board (`ROVER_BOARD_RANGE` raycast;
 to exit, park, and write `entities[]`.
 
 While driving, `body.rover-mode` shows the CSS cabin frame (`#roverCockpit`) and
-drive hint bar, and hides the foot/jet hint and fuel chrome. Each hull has its
-own Kenney circular-engine loop. Command spawns add vehicles; they never remove
-existing ones. The assets are in
+drive hint bar, and hides the foot/jet hint and fuel chrome. The boarded rover
+turns on a forward spotlight. Each hull has its own Kenney circular-engine loop.
+Crew or the local pet can sit in the cabin (and in the space cockpit on launch).
+Command spawns add vehicles; they never remove existing ones. The assets are in
 `assets/vehicles/quaternius-ultimate-space-kit/` (CC0; see
 [`CREDITS.md`](../CREDITS.md)).
 
@@ -399,10 +419,16 @@ per-rover engine loops while mounted, and thruster loops in space and while
 jetpacking. Space thruster gain and rate follow speed and boost; boosting also
 adds a short whoosh punch. Mining gets a computer hum. Pets chirp and play a
 bond jingle. The UI, scanner, launch, and landing have their own sounds too.
+Each planet also starts a quiet Tone.js radio loop from `planetRadioPatch`
+(`js/planet-radio.ts`); mute and underwater ducking follow the SFX bus.
 
 Buffers decode after the first unlock gesture. **M** / `/mute` sets master gain
 to zero and saves the choice on the player profile for the next session. Sound
-is on by default.
+is on by default. `prefers-reduced-motion` or Profile → REDUCE CRT MOTION zeros
+CRT grain and chromatic aberration (`crtComfortSettings` in `js/crt.ts`). The
+pixelation + CRT GLSL lives under `js/crt/` (vendored MIT from
+[threejs-psx-shader](https://github.com/lferreira457/threejs-psx-shader)); it is
+not an npm dependency.
 
 ### Space
 
@@ -469,8 +495,9 @@ actors in a cave: one XZ coordinate can have several surfaces.
 Vitest covers pure deterministic logic under `tests/`: config math, saves,
 cave brush/chunk math, field raycasts, capsule collision, mesh extraction,
 world helpers, space math, land/launch cinematic curves, fauna, vehicles,
-commands, gear, blueprints / structures, planet entities, shareable `?seed=`
-URLs, audio catalog and mapping helpers, and mute gain.
+commands, gear, blueprints / salvage, planet entities, shareable `?seed=`
+URLs, minimap projection, planet-radio patches, postcards, CRT comfort,
+audio catalog and mapping helpers, and mute gain.
 
 Do not build brittle mocks around Three.js, Web Audio graphs, the DOM, or all
 of `main` / `gameplay` / `ui`. Pull out helpers when a rule needs coverage. Add

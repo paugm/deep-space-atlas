@@ -14,6 +14,7 @@ import {
 } from "./blueprints.ts";
 import type { ProfileView } from "./player-profile.ts";
 import {
+  LOOK_SENSITIVITY_DEFAULT,
   MATERIAL_ORDER,
   MATERIALS,
   MINING_RING_CIRCUMFERENCE,
@@ -23,6 +24,7 @@ import {
   formatPetDistance,
   type PetCompassReading,
 } from "./fauna/compass.ts";
+import { FAUNA_DEFINITIONS } from "./fauna/species.ts";
 import {
   formatFlightSpeed,
   flightSpeedBarRatio,
@@ -31,6 +33,18 @@ import {
   MAX_PLAYER_NAME_LENGTH,
   formatPlayTime,
 } from "./player-profile.ts";
+import {
+  POSTCARD_THUMB_MAX_CHARS,
+  postcardCaption,
+  postcardFilename,
+} from "./postcard.ts";
+import {
+  MINIMAP_SIZE,
+  fillMinimapPixels,
+  worldToMapPixel,
+  type MinimapMarker,
+  type MinimapPaletteRgb,
+} from "./minimap.ts";
 
 /** UI callbacks signal user intent and never return application state. */
 export interface UIActions {
@@ -45,6 +59,10 @@ export interface UIActions {
   onInstallGear: (gearId: GearId) => void;
   onFabricate: (blueprintId: BlueprintId) => void;
   onProfileRename: (name: string) => void;
+  onLookSensitivity: (value: number) => void;
+  onReduceCrtMotion: (reduce: boolean) => void;
+  onCrewEnlist: () => void;
+  onCrewRelease: () => void;
   onTravelToVisited: (seedHex: string) => void;
   onSaveGame: () => void;
   onLoadGame: (file: File) => void;
@@ -104,6 +122,26 @@ export interface UI {
   setHudMode(mode: HudMode): void;
   /** Planet rover cabin chrome + drive hint bar (hides foot/jet hints). */
   setRoverDriving(active: boolean): void;
+  setMinimapVisible(visible: boolean): void;
+  paintMinimapTerrain(options: {
+    heights: ArrayLike<number>;
+    verticesPerRow: number;
+    minimumHeight: number;
+    maximumHeight: number;
+    palette: MinimapPaletteRgb;
+    waterLevel: number;
+    hasSurface: boolean;
+  }): void;
+  setMinimapMarkers(
+    markers: readonly MinimapMarker[],
+    playerYaw: number,
+  ): void;
+  setPhotoMode(active: boolean): void;
+  capturePostcard(
+    source: HTMLCanvasElement,
+    name: string,
+    seedHex: string,
+  ): { pngDataUrl: string; thumb: string; filename: string } | null;
   showFatal(title: string, message: string): void;
   showOverlay(mode: "start" | "paused"): void;
   showPlaying(): void;
@@ -167,6 +205,13 @@ export function createUI(): UI {
     profileName: byId("profileName", HTMLInputElement),
     profileNameSave: byId("profileNameSave", HTMLButtonElement),
     profilePlayTime: byId("profilePlayTime", HTMLSpanElement),
+    profileLook: byId("profileLook", HTMLInputElement),
+    profileLookValue: byId("profileLookValue", HTMLSpanElement),
+    profileReduceCrt: byId("profileReduceCrt", HTMLInputElement),
+    profileCrew: byId("profileCrew", HTMLDivElement),
+    profileCrewEmpty: byId("profileCrewEmpty", HTMLParagraphElement),
+    profileAtlas: byId("profileAtlas", HTMLDivElement),
+    profileAtlasEmpty: byId("profileAtlasEmpty", HTMLParagraphElement),
     profileVisited: byId("profileVisited", HTMLDivElement),
     profileVisitedEmpty: byId("profileVisitedEmpty", HTMLParagraphElement),
     profilePets: byId("profilePets", HTMLDivElement),
@@ -196,6 +241,8 @@ export function createUI(): UI {
     speedValue: byId("speedValue", HTMLSpanElement),
     notifications: byId("notifs", HTMLDivElement),
     roverCockpit: byId("roverCockpit", HTMLDivElement),
+    navMapWrap: byId("navMapWrap", HTMLDivElement),
+    navMap: byId("navMap", HTMLCanvasElement),
   };
 
   let lastTargetLabel = "";
@@ -568,6 +615,136 @@ export function createUI(): UI {
     );
   }
 
+  let minimapTerrain: ImageData | null = null;
+
+  function setMinimapVisible(visible: boolean): void {
+    elements.navMapWrap.classList.toggle("hidden", !visible);
+    elements.navMapWrap.setAttribute(
+      "aria-hidden",
+      visible ? "false" : "true",
+    );
+  }
+
+  function paintMinimapTerrain(options: {
+    heights: ArrayLike<number>;
+    verticesPerRow: number;
+    minimumHeight: number;
+    maximumHeight: number;
+    palette: MinimapPaletteRgb;
+    waterLevel: number;
+    hasSurface: boolean;
+  }): void {
+    const context = elements.navMap.getContext("2d");
+    if (context === null) return;
+    const image = context.createImageData(MINIMAP_SIZE, MINIMAP_SIZE);
+    fillMinimapPixels(image.data, {
+      heights: options.heights,
+      verticesPerRow: options.verticesPerRow,
+      minimumHeight: options.minimumHeight,
+      maximumHeight: options.maximumHeight,
+      palette: options.palette,
+      mapSize: MINIMAP_SIZE,
+      waterLevel: options.waterLevel,
+      surfaceKind: options.hasSurface ? "water" : "none",
+    });
+    context.putImageData(image, 0, 0);
+    minimapTerrain = context.getImageData(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
+  }
+
+  function setMinimapMarkers(
+    markers: readonly MinimapMarker[],
+    playerYaw: number,
+  ): void {
+    const context = elements.navMap.getContext("2d");
+    if (context === null || minimapTerrain === null) return;
+    context.putImageData(minimapTerrain, 0, 0);
+    for (const marker of markers) {
+      const pixel = worldToMapPixel(marker.x, marker.z, MINIMAP_SIZE);
+      switch (marker.kind) {
+        case "structure":
+          context.fillStyle = "#ffb347";
+          context.fillRect(pixel.x - 1, pixel.y - 1, 3, 3);
+          break;
+        case "pet":
+          context.fillStyle = "#7df0cf";
+          context.beginPath();
+          context.arc(pixel.x + 0.5, pixel.y + 0.5, 2, 0, Math.PI * 2);
+          context.fill();
+          break;
+        case "crew":
+          context.fillStyle = "#b8fff0";
+          context.beginPath();
+          context.arc(pixel.x + 0.5, pixel.y + 0.5, 2.4, 0, Math.PI * 2);
+          context.fill();
+          break;
+        case "player": {
+          context.save();
+          context.translate(pixel.x + 0.5, pixel.y + 0.5);
+          context.rotate(-playerYaw);
+          context.fillStyle = "#ffffff";
+          context.beginPath();
+          context.moveTo(0, -5);
+          context.lineTo(3.2, 4);
+          context.lineTo(0, 2);
+          context.lineTo(-3.2, 4);
+          context.closePath();
+          context.fill();
+          context.restore();
+          break;
+        }
+        default: {
+          const exhaustive: never = marker.kind;
+          throw new Error(`Unknown minimap marker: ${String(exhaustive)}`);
+        }
+      }
+    }
+  }
+
+  function setPhotoMode(active: boolean): void {
+    document.body.classList.toggle("photo-mode", active);
+  }
+
+  function capturePostcard(
+    source: HTMLCanvasElement,
+    name: string,
+    seedHex: string,
+  ): { pngDataUrl: string; thumb: string; filename: string } | null {
+    const caption = postcardCaption(name, seedHex);
+    const canvas = document.createElement("canvas");
+    canvas.width = source.width;
+    canvas.height = source.height;
+    const context = canvas.getContext("2d");
+    if (context === null) return null;
+    context.drawImage(source, 0, 0);
+    const barHeight = Math.max(36, Math.round(canvas.height * 0.07));
+    context.fillStyle = "rgba(4, 10, 12, 0.68)";
+    context.fillRect(0, canvas.height - barHeight, canvas.width, barHeight);
+    context.fillStyle = "#7df0cf";
+    context.font = `600 ${Math.max(14, Math.round(barHeight * 0.42))}px ${
+      getComputedStyle(document.body).fontFamily
+    }`;
+    context.fillText(caption, 16, canvas.height - barHeight * 0.35);
+    const pngDataUrl = canvas.toDataURL("image/png");
+    const thumb = document.createElement("canvas");
+    thumb.width = 320;
+    thumb.height = 180;
+    const thumbContext = thumb.getContext("2d");
+    if (thumbContext === null) return null;
+    thumbContext.drawImage(canvas, 0, 0, thumb.width, thumb.height);
+    let quality = 0.62;
+    let thumbUrl = thumb.toDataURL("image/jpeg", quality);
+    while (thumbUrl.length > POSTCARD_THUMB_MAX_CHARS && quality > 0.24) {
+      quality -= 0.12;
+      thumbUrl = thumb.toDataURL("image/jpeg", quality);
+    }
+    if (thumbUrl.length > POSTCARD_THUMB_MAX_CHARS) return null;
+    return {
+      pngDataUrl,
+      thumb: thumbUrl,
+      filename: postcardFilename(seedHex, Date.now()),
+    };
+  }
+
   function setSessionReady(ready: boolean): void {
     elements.playButton.disabled = !ready;
     elements.loadGameButton.disabled = !ready;
@@ -804,6 +981,43 @@ export function createUI(): UI {
     }
     elements.profileName.maxLength = MAX_PLAYER_NAME_LENGTH;
     elements.profilePlayTime.textContent = formatPlayTime(view.playTimeMs);
+    elements.profileLook.value = String(view.lookSensitivity);
+    elements.profileLookValue.textContent = view.lookSensitivity.toFixed(2);
+    elements.profileReduceCrt.checked = view.reduceCrtMotion;
+
+    const hasCrew = view.crew !== null;
+    elements.profileCrewEmpty.classList.toggle("hidden", hasCrew);
+    elements.profileCrew.classList.remove("hidden");
+    elements.profileCrew.replaceChildren();
+    if (view.crew !== null) {
+      const row = document.createElement("div");
+      row.className = "profile-crew-row";
+      const meta = document.createElement("div");
+      meta.className = "profile-crew-meta";
+      const title = document.createElement("div");
+      title.className = "profile-pet-name";
+      title.textContent =
+        FAUNA_DEFINITIONS[view.crew.species].label.toUpperCase();
+      const detail = document.createElement("div");
+      detail.className = "profile-pet-detail";
+      detail.textContent = `${view.crew.homeName.toUpperCase()} · ${view.crew.homeSeed}`;
+      meta.append(title, detail);
+      const release = document.createElement("button");
+      release.type = "button";
+      release.textContent = "RELEASE";
+      release.addEventListener("click", () => {
+        boundActions?.onCrewRelease();
+      });
+      row.append(meta, release);
+      elements.profileCrew.append(row);
+    }
+    const enlist = document.createElement("button");
+    enlist.type = "button";
+    enlist.textContent = hasCrew ? "REPLACE FROM PET" : "ENLIST PET";
+    enlist.addEventListener("click", () => {
+      boundActions?.onCrewEnlist();
+    });
+    elements.profileCrew.append(enlist);
 
     const companions = view.visited.filter((entry) => entry.hasPet);
     const hasCompanions = companions.length > 0;
@@ -872,6 +1086,22 @@ export function createUI(): UI {
 
       row.append(meta, travel);
       elements.profileVisited.append(row);
+    }
+
+    const hasPostcards = view.postcards.length > 0;
+    elements.profileAtlasEmpty.classList.toggle("hidden", hasPostcards);
+    elements.profileAtlas.classList.toggle("hidden", !hasPostcards);
+    elements.profileAtlas.replaceChildren();
+    for (const card of view.postcards) {
+      const item = document.createElement("div");
+      item.className = "profile-atlas-card";
+      const image = document.createElement("img");
+      image.src = card.thumb;
+      image.alt = postcardCaption(card.name, card.seed);
+      const caption = document.createElement("span");
+      caption.textContent = postcardCaption(card.name, card.seed);
+      item.append(image, caption);
+      elements.profileAtlas.append(item);
     }
   }
 
@@ -993,6 +1223,16 @@ export function createUI(): UI {
         elements.profileName.blur();
       }
     });
+    elements.profileLook.addEventListener("input", () => {
+      const value = Number(elements.profileLook.value);
+      elements.profileLookValue.textContent = Number.isFinite(value)
+        ? value.toFixed(2)
+        : LOOK_SENSITIVITY_DEFAULT.toFixed(2);
+      actions.onLookSensitivity(value);
+    });
+    elements.profileReduceCrt.addEventListener("change", () => {
+      actions.onReduceCrtMotion(elements.profileReduceCrt.checked);
+    });
     elements.commandInput.addEventListener("keydown", (event) => {
       event.stopPropagation();
       if (event.code === "Escape") {
@@ -1034,6 +1274,11 @@ export function createUI(): UI {
     setPetCompass,
     setHudMode,
     setRoverDriving,
+    setMinimapVisible,
+    paintMinimapTerrain,
+    setMinimapMarkers,
+    setPhotoMode,
+    capturePostcard,
     showFatal,
     showOverlay,
     showPlaying,

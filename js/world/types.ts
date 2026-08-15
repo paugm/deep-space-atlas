@@ -1,7 +1,7 @@
 import type * as THREE from "three";
 
 import type { DepositType, RandomSource } from "../config.ts";
-import type { FaunaSpeciesId } from "../fauna/species.ts";
+import type { CreatureRole, FaunaSpeciesId } from "../fauna/species.ts";
 import type { RoverKindId } from "../vehicles/kinds.ts";
 import type { PlanetDocument } from "../planet-save.ts";
 import type { CaveRuntime } from "./cave-runtime.ts";
@@ -117,7 +117,7 @@ export interface RoverPlanSpec {
 export interface FaunaAimTarget {
   creatureId: string;
   species: FaunaSpeciesId;
-  role: "wild" | "pet";
+  role: CreatureRole;
   object: THREE.Object3D;
 }
 
@@ -230,7 +230,7 @@ interface FaunaAimHit {
   kind: "fauna";
   creatureId: string;
   species: FaunaSpeciesId;
-  role: "wild" | "pet";
+  role: CreatureRole;
   point: THREE.Vector3;
   distance: number;
 }

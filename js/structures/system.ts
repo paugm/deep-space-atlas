@@ -58,6 +58,8 @@ export interface StructureSystem {
   ):
     | { ok: true; pose: StructurePose }
     | { ok: false; reason: StructurePlacementReason };
+  /** Remove a placed instance. Returns the blueprint id when found. */
+  remove(id: string): BlueprintId | null;
   /** Center-reticle raycast finds a structure within range. */
   aimedInRange(
     camera: THREE.Camera,
@@ -222,6 +224,15 @@ export function createStructureSystem(): StructureSystem {
     return { ok: true, pose };
   }
 
+  function remove(id: string): BlueprintId | null {
+    const index = structures.findIndex((entry) => entry.id === id);
+    if (index < 0) return null;
+    const [entry] = structures.splice(index, 1);
+    if (entry === undefined) return null;
+    disposeRuntime(entry);
+    return entry.blueprintId;
+  }
+
   function aimedInRange(
     camera: THREE.Camera,
     maxDistance: number,
@@ -362,6 +373,7 @@ export function createStructureSystem(): StructureSystem {
     sync,
     clear,
     place,
+    remove,
     aimedInRange,
     nearest,
     resolveWalls,

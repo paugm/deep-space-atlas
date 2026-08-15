@@ -43,6 +43,28 @@ export function deductCost(cost: CargoCost, inventory: Inventory): Inventory {
   return next;
 }
 
+export function addCost(cost: CargoCost, inventory: Inventory): Inventory {
+  const next = cloneInventory(inventory);
+  for (const materialId of MATERIAL_ORDER) {
+    const amount = cost[materialId];
+    if (amount === undefined || amount <= 0) continue;
+    next[materialId] += amount;
+  }
+  return next;
+}
+
+/** Half of each positive line, rounded down. Empty when every line is 1. */
+export function salvageRefund(cost: CargoCost): CargoCost {
+  const refund: CargoCost = {};
+  for (const materialId of MATERIAL_ORDER) {
+    const amount = cost[materialId];
+    if (amount === undefined || amount <= 0) continue;
+    const half = Math.floor(amount / 2);
+    if (half > 0) refund[materialId] = half;
+  }
+  return refund;
+}
+
 /** Cost lines for UI, ordered like cargo materials. */
 export function formatCargoCost(cost: CargoCost): string {
   const parts: string[] = [];

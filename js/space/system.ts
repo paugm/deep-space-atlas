@@ -1,7 +1,18 @@
 import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 
 import { Sound } from "../audio.ts";
-import { clamp, mulberry32 } from "../config.ts";
+import {
+  LOOK_SENSITIVITY_BASE,
+  clamp,
+  mulberry32,
+  normalizeLookSensitivity,
+} from "../config.ts";
+import {
+  FAUNA_DEFINITIONS,
+  type FaunaSpeciesId,
+} from "../fauna/species.ts";
 import { createStarPositions } from "../world/textures.ts";
 import { landingShipState } from "./cinematic-math.ts";
 import { buildCockpit } from "./cockpit.ts";
@@ -39,7 +50,6 @@ const DEPARTURE_AHEAD = 6;
 const DEPARTURE_DROP = 1.4;
 /** Minimum third-person travel so even shell crashes read as a dive. */
 const DEPARTURE_MIN_DISTANCE = 60;
-const LOOK_SENSITIVITY = 0.0022;
 const STARFIELD_RADIUS = 26000;
 const STAR_COUNT = 1600;
 const BASE_FOV = 72;
@@ -85,6 +95,8 @@ export interface SpaceSystem {
   };
   resize(aspect: number): void;
   getLastSeed(): number | null;
+  setLookSensitivity(multiplier: number): void;
+  setPassengerSpecies(species: FaunaSpeciesId | null): Promise<void>;
 }
 
 interface LoadedNearProxy {
@@ -198,6 +210,11 @@ export function createSpaceSystem({
   let landingRequested = false;
   let boostFuel = 1;
   let wasBoosting = false;
+  let lookSensitivity = LOOK_SENSITIVITY_BASE;
+  const passengerLoader = new GLTFLoader();
+  let passengerRoot: THREE.Group | null = null;
+  let passengerMixer: THREE.AnimationMixer | null = null;
+  let passengerGeneration = 0;
 
   /** Drives cockpit FOV and rumble. */
   function setFlightEffects(intensity: number, boosting = false): void {
@@ -676,6 +693,7 @@ export function createSpaceSystem({
     }
     syncProxies();
     updateProxyAppearance(approachTarget !== null ? null : targetSeed);
+    passengerMixer?.update(deltaTime);
   }
 
   function getView(): {
@@ -703,14 +721,53 @@ export function createSpaceSystem({
       clearFlightEffects();
       camera.fov = BASE_FOV;
       camera.updateProjectionMatrix();
+      void setPassengerSpecies(null);
     }
+  }
+
+  function setLookSensitivity(multiplier: number): void {
+    lookSensitivity = LOOK_SENSITIVITY_BASE * normalizeLookSensitivity(multiplier);
+  }
+
+  function clearPassenger(): void {
+    passengerGeneration += 1;
+    passengerMixer?.stopAllAction();
+    passengerMixer = null;
+    passengerRoot?.removeFromParent();
+    passengerRoot = null;
+  }
+
+  async function setPassengerSpecies(
+    species: FaunaSpeciesId | null,
+  ): Promise<void> {
+    clearPassenger();
+    if (species === null) return;
+    const generation = passengerGeneration;
+    const definition = FAUNA_DEFINITIONS[species];
+    const gltf = await passengerLoader.loadAsync(definition.glbUrl);
+    if (generation !== passengerGeneration) return;
+    const model = cloneSkinned(gltf.scene);
+    model.scale.setScalar(definition.scale * 0.55);
+    const root = new THREE.Group();
+    root.add(model);
+    root.position.set(0.62, -0.52, -0.92);
+    root.rotation.set(0.12, -0.35, 0);
+    camera.add(root);
+    const mixer = new THREE.AnimationMixer(model);
+    const idle =
+      gltf.animations.find((clip) =>
+        clip.name.replace(/^MonsterArmature\|/, "") === "Idle",
+      ) ?? gltf.animations[0];
+    if (idle !== undefined) mixer.clipAction(idle).play();
+    passengerRoot = root;
+    passengerMixer = mixer;
   }
 
   function handleMouseMove(event: MouseEvent): void {
     if (!active || approachTarget !== null || !isPointerLocked()) return;
-    pose.yaw -= event.movementX * LOOK_SENSITIVITY;
+    pose.yaw -= event.movementX * lookSensitivity;
     pose.pitch = clamp(
-      pose.pitch - event.movementY * LOOK_SENSITIVITY,
+      pose.pitch - event.movementY * lookSensitivity,
       -1.5,
       1.5,
     );
@@ -763,5 +820,7 @@ export function createSpaceSystem({
     getLastSeed(): number | null {
       return lastSeed;
     },
+    setLookSensitivity,
+    setPassengerSpecies,
   };
 }

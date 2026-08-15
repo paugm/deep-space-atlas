@@ -103,9 +103,10 @@ playtesters can force a single upgrade.
 
 ### Profile version
 
-Installed gear is `PLAYER_PROFILE_VERSION` **4** (`gear`). Loading v1 or v2
-profiles upgrades in memory with `gear: []`. Loading v3 profiles migrates the
-legacy `builds` field to `gear`. Unknown gear ids fail parse (strict).
+Installed gear is stored on `PLAYER_PROFILE_VERSION` **5** (`gear`, plus look,
+CRT comfort, crew, and postcards). Loading v1 or v2 profiles upgrades in memory
+with `gear: []`. Loading v3 profiles migrates the legacy `builds` field to
+`gear`. Loading v4 adds the v5 defaults. Unknown gear ids fail parse (strict).
 
 ## Current catalog
 

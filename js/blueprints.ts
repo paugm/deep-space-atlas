@@ -5,10 +5,12 @@
 
 import type { CargoCost } from "./cargo-cost.ts";
 import {
+  addCost,
   canAffordCost,
   cloneInventory,
   deductCost,
   formatCargoCost,
+  salvageRefund,
 } from "./cargo-cost.ts";
 import type { Inventory } from "./config.ts";
 
@@ -40,6 +42,9 @@ export interface BlueprintDefinition {
 }
 
 export type TryFabricateReason = "unknown" | "cannot-afford";
+
+/** Hold-extract seconds to dismantle a field structure. */
+export const SALVAGE_TIME = 0.85;
 
 export type TryFabricateResult =
   | {
@@ -141,4 +146,4 @@ export function tryFabricate(
   };
 }
 
-export { canAffordCost, formatCargoCost };
+export { addCost, canAffordCost, formatCargoCost, salvageRefund };

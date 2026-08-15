@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  LOOK_SENSITIVITY_DEFAULT,
+  LOOK_SENSITIVITY_MAX,
+  LOOK_SENSITIVITY_MIN,
   DEPOSIT_DEFINITIONS,
   DEPOSIT_TYPES,
   MATERIAL_ORDER,
@@ -10,6 +13,7 @@ import {
   lerp,
   makeFbm,
   mulberry32,
+  normalizeLookSensitivity,
   smoothstep,
 } from "../js/config.ts";
 
@@ -128,5 +132,14 @@ describe("material and deposit tables", () => {
     for (const type of DEPOSIT_TYPES) {
       expect(type in MATERIALS).toBe(true);
     }
+  });
+});
+
+describe("normalizeLookSensitivity", () => {
+  it("defaults, clamps, and keeps in-range values", () => {
+    expect(normalizeLookSensitivity(Number.NaN)).toBe(LOOK_SENSITIVITY_DEFAULT);
+    expect(normalizeLookSensitivity(0)).toBe(LOOK_SENSITIVITY_MIN);
+    expect(normalizeLookSensitivity(9)).toBe(LOOK_SENSITIVITY_MAX);
+    expect(normalizeLookSensitivity(1.25)).toBe(1.25);
   });
 });

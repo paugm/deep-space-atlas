@@ -4,8 +4,10 @@ import { EYE_HEIGHT, PLAYER_RADIUS } from "../js/config.ts";
 import {
   BLUEPRINT_DEFINITIONS,
   BLUEPRINT_ORDER,
+  addCost,
   blueprintDefinitionFromToken,
   isBlueprintId,
+  salvageRefund,
   tryFabricate,
 } from "../js/blueprints.ts";
 import { createEmptyInventory } from "../js/player-profile.ts";
@@ -74,6 +76,27 @@ describe("tryFabricate", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.inventory).toEqual(inventory);
+  });
+});
+
+describe("salvageRefund", () => {
+  it("returns half of each line rounded down and skips ones", () => {
+    expect(salvageRefund({ silicate: 25, iron: 15, copper: 8 })).toEqual({
+      silicate: 12,
+      iron: 7,
+      copper: 4,
+    });
+    expect(salvageRefund({ silicate: 1, carbon: 2 })).toEqual({ carbon: 1 });
+    expect(salvageRefund({ silicate: 1 })).toEqual({});
+  });
+
+  it("addCost restores a salvage refund onto cargo", () => {
+    const inventory = createEmptyInventory();
+    inventory.silicate = 3;
+    const next = addCost({ silicate: 12, iron: 7 }, inventory);
+    expect(next.silicate).toBe(15);
+    expect(next.iron).toBe(7);
+    expect(inventory.silicate).toBe(3);
   });
 });
 

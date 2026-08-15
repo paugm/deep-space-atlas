@@ -17,6 +17,8 @@ import skullUrl from "../../assets/creatures/quaternius-cute-monsters/skull.glb?
 import treeUrl from "../../assets/creatures/quaternius-cute-monsters/tree.glb?url";
 import yetiUrl from "../../assets/creatures/quaternius-cute-monsters/yeti.glb?url";
 
+export type CreatureRole = "wild" | "pet" | "crew";
+
 export type FaunaSpeciesId =
   | "alien"
   | "alien-tall"

@@ -10,6 +10,8 @@ export const FAUNA_WANDER_PAUSE_MAX = 3.8;
 export const PET_GREET_SECONDS = 2.2;
 export const PET_SPAWN_OFFSET = 3.6;
 export const TAME_TIME = 1.35;
+/** Hold-extract on your pet to enlist them as traveling crew. */
+export const ENLIST_TIME = 1.2;
 
 export interface Pose2 {
   x: number;

@@ -42,7 +42,7 @@ see [`CREDITS.md`](CREDITS.md).
 
 <pre>
 ┌──────────────────────────────────────────────────────────────┐
-│  DEEP SPACE ATLAS //// SPEC SHEET                   v0.21.1  │
+│  DEEP SPACE ATLAS //// SPEC SHEET                   v0.22.0  │
 ├──────────────────────────────────────────────────────────────┤
 │  WORLDS                                                      │
 │    PLANETS ........ 4,294,967,296                            │
@@ -78,14 +78,16 @@ see [`CREDITS.md`](CREDITS.md).
 | --- | --- |
 | W/A/S/D or arrows | Move (slower in water) |
 | Mouse | Look |
-| Hold LMB | Extract material, dig a cave in the look direction, or tame a wild creature |
+| Hold LMB | Extract material, dig a cave, tame a wild creature, enlist your pet, or salvage a structure |
 | Space | Jump |
 | Hold Space (airborne) | Jetpack |
 | Shift (forward) | Sprint (disabled while swimming) |
 | I | Cargo hold (tabs to Gear / Build / Profile) |
 | G | Gear / permanent upgrades (tabs to Cargo / Build / Profile) |
 | B | Build / field blueprints (tabs to Cargo / Gear / Profile) |
-| P | Commander profile (tabs to Cargo / Gear / Build; companions + visits) |
+| P | Commander profile (tabs to Cargo / Gear / Build; look, CRT comfort, crew, companions, visits, atlas) |
+| N | Toggle heightfield nav map |
+| F | Stamp a survey postcard (downloads a PNG; stored in the local atlas) |
 | M | Mute / unmute audio |
 | E (look at rover) | Board / exit a wheeled rover |
 | E near ship | Board and launch to space |

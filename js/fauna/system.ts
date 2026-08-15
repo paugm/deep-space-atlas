@@ -22,10 +22,9 @@ import type { PetEntityData } from "./pet-entity.ts";
 import {
   FAUNA_DEFINITIONS,
   pickRandomFaunaSpecies,
+  type CreatureRole,
   type FaunaSpeciesId,
 } from "./species.ts";
-
-type CreatureRole = "wild" | "pet";
 
 interface CreatureRuntime {
   id: string;
@@ -42,6 +41,7 @@ interface CreatureRuntime {
   goalZ: number;
   pauseRemaining: number;
   greetRemaining: number;
+  seated: boolean;
   wanderRandom: () => number;
   sourceSpawnId?: string;
 }
@@ -54,6 +54,15 @@ export interface PetBeacon {
 
 export interface FaunaSystem {
   sync(world: World, petEntity: PlanetEntity | null): Promise<void>;
+  /** Traveling crew from the profile; skipped when the planet pet is that crew. */
+  syncCrew(
+    crew: {
+      species: FaunaSpeciesId;
+      homeSeed: string;
+    } | null,
+    worldSeedHex: string,
+    near: { x: number; z: number },
+  ): Promise<void>;
   clear(): void;
   update(
     deltaTime: number,
@@ -71,8 +80,22 @@ export interface FaunaSystem {
     | { ok: false; reason: "has-pet" | "no-world" }
   >;
   hasPet(): boolean;
+  hasCrew(): boolean;
   getPetBeacon(): PetBeacon | null;
+  getCrewBeacon(): PetBeacon | null;
+  getPassengerSpecies(): FaunaSpeciesId | null;
+  setPassengerParent(
+    parent: THREE.Object3D | null,
+    local?: { x: number; y: number; z: number; yaw: number },
+  ): void;
   getPetSaveEntity(): PlanetEntity | null;
+  enlistPet(homeSeed: string, homeName: string): {
+    species: FaunaSpeciesId;
+    homeSeed: string;
+    homeName: string;
+  } | null;
+  releaseCrewAsPet(): PlanetEntity | null;
+  dismissCrewFollower(): void;
 }
 
 interface TemplateCache {
@@ -211,6 +234,7 @@ export function createFaunaSystem(): FaunaSystem {
       goalZ: goal.z,
       pauseRemaining: options.greet ? 0 : 0.6,
       greetRemaining: options.greet ? PET_GREET_SECONDS : 0,
+      seated: false,
       wanderRandom: mulberry32(hashId(options.id) ^ 0x99abcdef),
       ...(options.sourceSpawnId !== undefined
         ? { sourceSpawnId: options.sourceSpawnId }
@@ -306,6 +330,54 @@ export function createFaunaSystem(): FaunaSystem {
     refreshAimTargets();
   }
 
+  async function syncCrew(
+    crew: {
+      species: FaunaSpeciesId;
+      homeSeed: string;
+    } | null,
+    worldSeedHex: string,
+    near: { x: number; z: number },
+  ): Promise<void> {
+    const activeWorld = world;
+    if (activeWorld === null) return;
+    creatures = creatures.filter((creature) => {
+      if (creature.role !== "crew") return true;
+      creature.mixer.stopAllAction();
+      creature.root.removeFromParent();
+      return false;
+    });
+    if (crew === null) {
+      refreshAimTargets();
+      return;
+    }
+    const localPet = creatures.find((creature) => creature.role === "pet");
+    if (
+      localPet !== undefined &&
+      localPet.species === crew.species &&
+      crew.homeSeed === worldSeedHex
+    ) {
+      refreshAimTargets();
+      return;
+    }
+    const pose = petWaitPose(near.x, near.z, Math.random);
+    const creature = await spawnCreature({
+      id: "crew",
+      species: crew.species,
+      role: "crew",
+      pose,
+      homeX: pose.x,
+      homeZ: pose.z,
+      greet: true,
+    });
+    if (world !== activeWorld) {
+      creature.mixer.stopAllAction();
+      creature.root.removeFromParent();
+      return;
+    }
+    creatures.push(creature);
+    refreshAimTargets();
+  }
+
   function groundCreature(creature: CreatureRuntime): void {
     if (world === null) return;
     const height = world.heightAt(creature.pose.x, creature.pose.z);
@@ -322,54 +394,70 @@ export function createFaunaSystem(): FaunaSystem {
     for (const creature of creatures) {
       creature.mixer.update(deltaTime);
 
-      if (creature.role === "pet") {
-        if (creature.greetRemaining > 0) {
-          creature.greetRemaining -= deltaTime;
-          creature.pose.yaw = Math.atan2(
-            player.x - creature.pose.x,
-            player.z - creature.pose.z,
-          );
-          playClip(creature, chooseGreetClip(creature));
-          groundCreature(creature);
-          continue;
-        }
-
-        const follow = stepFollow({
-          pose: creature.pose,
-          targetX: player.x,
-          targetZ: player.z,
-          deltaTime,
-        });
-        creature.pose = follow.pose;
-        playClip(
-          creature,
-          follow.moving ? chooseWalkClip(creature) : chooseIdleClip(creature),
-        );
-        groundCreature(creature);
+      if (creature.seated) {
+        playClip(creature, chooseIdleClip(creature));
         continue;
       }
 
-      // Deterministic wander: reseed each step from id + quantized time bucket
-      // would jump; use a stable per-creature PRNG advanced via pause goals only.
-      const wander = stepWander({
-        pose: creature.pose,
-        goalX: creature.goalX,
-        goalZ: creature.goalZ,
-        pauseRemaining: creature.pauseRemaining,
-        deltaTime,
-        random: creature.wanderRandom,
-        homeX: creature.homeX,
-        homeZ: creature.homeZ,
-      });
-      creature.pose = wander.pose;
-      creature.goalX = wander.goalX;
-      creature.goalZ = wander.goalZ;
-      creature.pauseRemaining = wander.pauseRemaining;
-      playClip(
-        creature,
-        wander.moving ? chooseWalkClip(creature) : chooseIdleClip(creature),
-      );
-      groundCreature(creature);
+      switch (creature.role) {
+        case "pet":
+        case "crew": {
+          if (creature.greetRemaining > 0) {
+            creature.greetRemaining -= deltaTime;
+            creature.pose.yaw = Math.atan2(
+              player.x - creature.pose.x,
+              player.z - creature.pose.z,
+            );
+            playClip(creature, chooseGreetClip(creature));
+            groundCreature(creature);
+            break;
+          }
+
+          const follow = stepFollow({
+            pose: creature.pose,
+            targetX: player.x,
+            targetZ: player.z,
+            deltaTime,
+          });
+          creature.pose = follow.pose;
+          playClip(
+            creature,
+            follow.moving
+              ? chooseWalkClip(creature)
+              : chooseIdleClip(creature),
+          );
+          groundCreature(creature);
+          break;
+        }
+        case "wild": {
+          const wander = stepWander({
+            pose: creature.pose,
+            goalX: creature.goalX,
+            goalZ: creature.goalZ,
+            pauseRemaining: creature.pauseRemaining,
+            deltaTime,
+            random: creature.wanderRandom,
+            homeX: creature.homeX,
+            homeZ: creature.homeZ,
+          });
+          creature.pose = wander.pose;
+          creature.goalX = wander.goalX;
+          creature.goalZ = wander.goalZ;
+          creature.pauseRemaining = wander.pauseRemaining;
+          playClip(
+            creature,
+            wander.moving
+              ? chooseWalkClip(creature)
+              : chooseIdleClip(creature),
+          );
+          groundCreature(creature);
+          break;
+        }
+        default: {
+          const exhaustiveRole: never = creature.role;
+          throw new Error(`Unknown creature role: ${String(exhaustiveRole)}`);
+        }
+      }
     }
 
     refreshAimTargets();
@@ -379,14 +467,108 @@ export function createFaunaSystem(): FaunaSystem {
     return creatures.some((creature) => creature.role === "pet");
   }
 
+  function hasCrew(): boolean {
+    return creatures.some((creature) => creature.role === "crew");
+  }
+
+  function beaconFor(role: "pet" | "crew"): PetBeacon | null {
+    const match = creatures.find((creature) => creature.role === role);
+    if (match === undefined) return null;
+    return {
+      x: match.pose.x,
+      z: match.pose.z,
+      label:
+        role === "crew"
+          ? `CREW · ${FAUNA_DEFINITIONS[match.species].label.toUpperCase()}`
+          : FAUNA_DEFINITIONS[match.species].label.toUpperCase(),
+    };
+  }
+
   function getPetBeacon(): PetBeacon | null {
+    return beaconFor("pet");
+  }
+
+  function getCrewBeacon(): PetBeacon | null {
+    return beaconFor("crew");
+  }
+
+  function passengerCreature(): CreatureRuntime | null {
+    return (
+      creatures.find((creature) => creature.role === "crew") ??
+      creatures.find((creature) => creature.role === "pet") ??
+      null
+    );
+  }
+
+  function getPassengerSpecies(): FaunaSpeciesId | null {
+    return passengerCreature()?.species ?? null;
+  }
+
+  function setPassengerParent(
+    parent: THREE.Object3D | null,
+    local?: { x: number; y: number; z: number; yaw: number },
+  ): void {
+    const creature = passengerCreature();
+    if (creature === null || world === null) return;
+    if (parent === null) {
+      creature.seated = false;
+      world.group.add(creature.root);
+      groundCreature(creature);
+      return;
+    }
+    creature.seated = true;
+    parent.add(creature.root);
+    const seat = local ?? { x: 0.55, y: 0.85, z: 0.15, yaw: 0 };
+    creature.root.position.set(seat.x, seat.y, seat.z);
+    creature.root.rotation.set(0, seat.yaw, 0);
+  }
+
+  function enlistPet(homeSeed: string, homeName: string): {
+    species: FaunaSpeciesId;
+    homeSeed: string;
+    homeName: string;
+  } | null {
     const pet = creatures.find((creature) => creature.role === "pet");
     if (pet === undefined) return null;
     return {
-      x: pet.pose.x,
-      z: pet.pose.z,
-      label: FAUNA_DEFINITIONS[pet.species].label.toUpperCase(),
+      species: pet.species,
+      homeSeed,
+      homeName,
     };
+  }
+
+  function releaseCrewAsPet(): PlanetEntity | null {
+    if (world === null) return null;
+    if (hasPet()) return null;
+    const crew = creatures.find((creature) => creature.role === "crew");
+    if (crew === undefined) return null;
+    crew.role = "pet";
+    crew.id = "pet";
+    crew.root.userData = {
+      kind: "fauna",
+      creatureId: "pet",
+      species: crew.species,
+      role: "pet",
+    };
+    refreshAimTargets();
+    const height = world.heightAt(crew.pose.x, crew.pose.z);
+    return createPetEntity({
+      species: crew.species,
+      x: crew.pose.x,
+      y: height,
+      z: crew.pose.z,
+      yaw: crew.pose.yaw,
+    });
+  }
+
+  function dismissCrewFollower(): void {
+    creatures = creatures.filter((creature) => {
+      if (creature.role !== "crew") return true;
+      creature.mixer.stopAllAction();
+      creature.root.removeFromParent();
+      return false;
+    });
+    refreshAimTargets();
   }
 
   function getPetSaveEntity(): PlanetEntity | null {
@@ -494,13 +676,21 @@ export function createFaunaSystem(): FaunaSystem {
 
   return {
     sync,
+    syncCrew,
     clear,
     update,
     tryTame,
     adoptPet,
     hasPet,
+    hasCrew,
     getPetBeacon,
+    getCrewBeacon,
+    getPassengerSpecies,
+    setPassengerParent,
     getPetSaveEntity,
+    enlistPet,
+    releaseCrewAsPet,
+    dismissCrewFollower,
   };
 }
 

@@ -16,14 +16,16 @@ costs. **Gear** (**G**) is separate: permanent commander upgrades (see
    this planet.
 4. FABRICATE spends cargo and plants the structure a few meters ahead of the
    commander, then closes the menu.
-5. Leave and return: structures restore with the planet patch.
+5. Aim at a placed structure and hold LMB to salvage it. Half of each cost
+   line (rounded down) returns to cargo; a recipe of all 1s refunds nothing.
+6. Leave and return: remaining structures restore with the planet patch.
 
 Playtesters can skip cargo with `/build <token>` (see [`commands.md`](commands.md)).
 
 ## Architecture
 
 ```text
-js/cargo-cost.ts         shared afford / deduct / format cost helpers
+js/cargo-cost.ts         shared afford / deduct / add / salvageRefund helpers
 js/blueprints.ts         catalog, tryFabricate (pure spend)
 js/structures/placement.ts  validate spacing, limits, bounds (pure)
 js/structures/entity.ts  PlanetEntity codec for kind: "structure"

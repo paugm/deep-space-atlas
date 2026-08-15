@@ -14,8 +14,16 @@ import {
   tryInstallGear,
 } from "./gear.ts";
 import type { TryFabricateReason } from "./blueprints.ts";
-import { tryFabricate } from "./blueprints.ts";
+import {
+  BLUEPRINT_DEFINITIONS,
+  SALVAGE_TIME,
+  addCost,
+  formatCargoCost,
+  salvageRefund,
+  tryFabricate,
+} from "./blueprints.ts";
 import type { StructurePlacementReason, StructureSystem } from "./structures/index.ts";
+import { STRUCTURE_AIM_RANGE } from "./structures/index.ts";
 import {
   type SolidCollider,
   resolveCapsuleAgainstSolids,
@@ -27,6 +35,7 @@ import {
   GRAVITY,
   HALF_WORLD,
   JET_ACCELERATION,
+  LOOK_SENSITIVITY_BASE,
   MATERIAL_ORDER,
   MATERIALS,
   PLAYER_COLLISION_QUERY_RADIUS,
@@ -37,9 +46,11 @@ import {
   WATER_GRAVITY_FACTOR,
   clamp,
   lerp,
+  normalizeLookSensitivity,
 } from "./config.ts";
 import { sampleWaterImmersion } from "./water.ts";
-import { TAME_TIME } from "./fauna/motion.ts";
+import { TAME_TIME, ENLIST_TIME } from "./fauna/motion.ts";
+import type { FaunaSpeciesId } from "./fauna/species.ts";
 import {
   FAUNA_DEFINITIONS,
   isFaunaSpeciesId,
@@ -71,7 +82,8 @@ type MiningKey =
   | `rock:${number}`
   | `flora:${number}`
   | `deposit:${DepositType}:${number}`
-  | `fauna:${string}`;
+  | `fauna:${string}`
+  | `salvage:${string}`;
 
 interface HitInfo {
   label: string;
@@ -157,6 +169,7 @@ export interface Gameplay {
     yaw: number;
     eyeHeight: number;
   }): void;
+  setLookSensitivity(multiplier: number): void;
 }
 
 export interface MountState {
@@ -188,6 +201,14 @@ export interface GameplayDependencies {
   onProfileOpen?: () => void;
   /** Flush autosave when opening a commander menu or command bar. */
   onPersistCheckpoint?: () => void;
+  onCrewEnlisted?: (crew: {
+    species: FaunaSpeciesId;
+    homeSeed: string;
+    homeName: string;
+  }) => void;
+  currentSeedHex?: () => string | null;
+  currentWorldName?: () => string;
+  onUnderwater?: (active: boolean, strength: number) => void;
 }
 
 /**
@@ -211,6 +232,10 @@ export function createGameplay({
   onStructuresChanged,
   onProfileOpen,
   onPersistCheckpoint,
+  onCrewEnlisted,
+  currentSeedHex,
+  currentWorldName,
+  onUnderwater,
 }: GameplayDependencies): Gameplay {
   const player: PlayerState = {
     position: new THREE.Vector3(),
@@ -252,6 +277,7 @@ export function createGameplay({
   let miningHeld = false;
   let miningProgress = 0;
   let miningKey: MiningKey | null = null;
+  let lookSensitivity = LOOK_SENSITIVITY_BASE;
 
   const vector1 = new THREE.Vector3();
   const vector2 = new THREE.Vector3();
@@ -671,15 +697,20 @@ export function createGameplay({
           1,
         );
         Sound.setUnderwater(true, strength);
+        onUnderwater?.(true, strength);
         Sound.swimStroke();
       } else {
         Sound.setUnderwater(false);
+        onUnderwater?.(false, 0);
       }
     } else if (eyeSubmerged && immersion) {
-      Sound.setUnderwater(
-        true,
-        clamp(immersion.eyeDepth / WATER_DEPTH_FOR_FULL_FOG, 0.35, 1),
+      const strength = clamp(
+        immersion.eyeDepth / WATER_DEPTH_FOR_FULL_FOG,
+        0.35,
+        1,
       );
+      Sound.setUnderwater(true, strength);
+      onUnderwater?.(true, strength);
     }
 
     const wantsSprint =
@@ -911,7 +942,7 @@ export function createGameplay({
       player.bobPhase += horizontalSpeed * deltaTime * 1.7;
     }
 
-    if (faunaSystem.hasPet()) {
+    if (faunaSystem.hasPet() || faunaSystem.hasCrew()) {
       petChirpCooldown -= deltaTime;
       if (petChirpCooldown <= 0) {
         petChirpCooldown = 7 + Math.random() * 8;
@@ -992,16 +1023,27 @@ export function createGameplay({
       case "fauna": {
         const speciesLabel =
           FAUNA_DEFINITIONS[hit.species].label.toUpperCase();
-        if (hit.role === "pet") {
-          return {
-            label: `YOUR COMPANION · ${speciesLabel}`,
-            material: "silicate",
-          };
+        switch (hit.role) {
+          case "pet":
+            return {
+              label: `YOUR COMPANION · ${speciesLabel} · HOLD TO ENLIST`,
+              material: "silicate",
+            };
+          case "crew":
+            return {
+              label: `CREW · ${speciesLabel}`,
+              material: "silicate",
+            };
+          case "wild":
+            return {
+              label: `WILD ${speciesLabel} · HOLD TO TAME`,
+              material: "crystal",
+            };
+          default: {
+            const exhaustiveRole: never = hit.role;
+            throw new Error(`Unknown fauna role: ${String(exhaustiveRole)}`);
+          }
         }
-        return {
-          label: `WILD ${speciesLabel} · HOLD TO TAME`,
-          material: "crystal",
-        };
       }
       default: {
         const exhaustiveHit: never = hit;
@@ -1074,6 +1116,40 @@ export function createGameplay({
     impact.visible = false;
     impactLight.intensity = 0;
     Sound.humOff();
+  }
+
+  function completeEnlist(): void {
+    const seedHex = currentSeedHex?.();
+    const homeName = currentWorldName?.() ?? "Unknown";
+    if (seedHex === null || seedHex === undefined) return;
+    const crew = faunaSystem.enlistPet(seedHex, homeName);
+    if (crew === null) return;
+    onCrewEnlisted?.(crew);
+    const speciesLabel = FAUNA_DEFINITIONS[crew.species].label;
+    ui.notify(`CREW ENLISTED · ${speciesLabel.toUpperCase()}`, "#7df0cf");
+    Sound.petBond();
+    petChirpCooldown = 2;
+  }
+
+  function completeSalvage(structureId: string): void {
+    const blueprintId = structureSystem.remove(structureId);
+    if (blueprintId === null) return;
+    const refund = salvageRefund(BLUEPRINT_DEFINITIONS[blueprintId].cost);
+    const next = addCost(refund, inventory);
+    for (const materialId of MATERIAL_ORDER) {
+      inventory[materialId] = next[materialId];
+    }
+    ui.updateInventoryViews(inventory);
+    onInventoryChanged?.(inventory);
+    onStructuresChanged?.();
+    const refundLabel = formatCargoCost(refund);
+    ui.notify(
+      refundLabel === ""
+        ? `SALVAGED · ${BLUEPRINT_DEFINITIONS[blueprintId].label.toUpperCase()}`
+        : `SALVAGED · +${refundLabel}`,
+      "#7df0cf",
+    );
+    Sound.chime(349);
   }
 
   function completeTame(creatureId: string): void {
@@ -1165,6 +1241,42 @@ export function createGameplay({
       ui.setTargetLabel("");
       return;
     }
+
+    const structureHit =
+      locked && started
+        ? structureSystem.aimedInRange(camera, STRUCTURE_AIM_RANGE)
+        : null;
+    if (structureHit !== null) {
+      const definition = BLUEPRINT_DEFINITIONS[structureHit.blueprintId];
+      ui.setTargetLabel(
+        `${definition.label.toUpperCase()} · HOLD TO SALVAGE`,
+      );
+      if (!miningHeld || !locked) {
+        hideMiningEffects();
+        ui.setMiningProgress(miningProgress);
+        return;
+      }
+      const targetKey: MiningKey = `salvage:${structureHit.id}`;
+      if (targetKey !== miningKey) {
+        miningKey = targetKey;
+        miningProgress = 0;
+      }
+      beam.visible = false;
+      impact.visible = false;
+      impactLight.intensity = 0;
+      miningProgress += deltaTime / SALVAGE_TIME;
+      Sound.humOn();
+      Sound.setHumProgress(Math.min(miningProgress, 1));
+      if (miningProgress >= 1) {
+        completeSalvage(structureHit.id);
+        miningProgress = 0;
+        miningKey = null;
+        Sound.humOff();
+      }
+      ui.setMiningProgress(miningProgress);
+      return;
+    }
+
     const hit =
       locked && started
         ? worldSystem.getAimHit(camera, modifiers.miningRange)
@@ -1195,32 +1307,50 @@ export function createGameplay({
       beam.visible = false;
       impact.visible = false;
       impactLight.intensity = 0;
-      if (hit.role === "pet") {
-        miningProgress = 0;
-        miningKey = null;
-        Sound.humOff();
-        ui.setMiningProgress(0);
-        return;
+      switch (hit.role) {
+        case "crew":
+          miningProgress = 0;
+          miningKey = null;
+          Sound.humOff();
+          ui.setMiningProgress(0);
+          return;
+        case "pet":
+          miningProgress += deltaTime / ENLIST_TIME;
+          Sound.humOn();
+          Sound.setHumProgress(Math.min(miningProgress, 1));
+          if (miningProgress >= 1) {
+            completeEnlist();
+            miningProgress = 0;
+            miningKey = null;
+            Sound.humOff();
+          }
+          ui.setMiningProgress(miningProgress);
+          return;
+        case "wild":
+          if (faunaSystem.hasPet()) {
+            ui.setTargetLabel("ALREADY HAVE A COMPANION");
+            miningProgress = 0;
+            miningKey = null;
+            Sound.humOff();
+            ui.setMiningProgress(0);
+            return;
+          }
+          miningProgress += deltaTime / TAME_TIME;
+          Sound.humOn();
+          Sound.setHumProgress(Math.min(miningProgress, 1));
+          if (miningProgress >= 1) {
+            completeTame(hit.creatureId);
+            miningProgress = 0;
+            miningKey = null;
+            Sound.humOff();
+          }
+          ui.setMiningProgress(miningProgress);
+          return;
+        default: {
+          const exhaustiveRole: never = hit.role;
+          throw new Error(`Unknown fauna role: ${String(exhaustiveRole)}`);
+        }
       }
-      if (faunaSystem.hasPet()) {
-        ui.setTargetLabel("ALREADY HAVE A COMPANION");
-        miningProgress = 0;
-        miningKey = null;
-        Sound.humOff();
-        ui.setMiningProgress(0);
-        return;
-      }
-      miningProgress += deltaTime / TAME_TIME;
-      Sound.humOn();
-      Sound.setHumProgress(Math.min(miningProgress, 1));
-      if (miningProgress >= 1) {
-        completeTame(hit.creatureId);
-        miningProgress = 0;
-        miningKey = null;
-        Sound.humOff();
-      }
-      ui.setMiningProgress(miningProgress);
-      return;
     }
 
     miningProgress += deltaTime / modifiers.miningTime;
@@ -1306,9 +1436,9 @@ export function createGameplay({
 
   function handleMouseMove(event: MouseEvent): void {
     if (!active || !locked) return;
-    player.yaw -= event.movementX * 0.0022;
+    player.yaw -= event.movementX * lookSensitivity;
     player.pitch = clamp(
-      player.pitch - event.movementY * 0.0022,
+      player.pitch - event.movementY * lookSensitivity,
       -1.55,
       1.55,
     );
@@ -1411,6 +1541,7 @@ export function createGameplay({
       hideMiningEffects();
       ui.setMiningProgress(0);
       ui.setTargetLabel("");
+      onUnderwater?.(false, 0);
       return;
     }
 
@@ -1423,6 +1554,11 @@ export function createGameplay({
       closeOverlays();
       ui.showPlaying();
     }
+  }
+
+  function setLookSensitivity(multiplier: number): void {
+    lookSensitivity =
+      LOOK_SENSITIVITY_BASE * normalizeLookSensitivity(multiplier);
   }
 
   return {
@@ -1449,5 +1585,6 @@ export function createGameplay({
     isMounted,
     enterRoverCabin,
     exitRoverCabin,
+    setLookSensitivity,
   };
 }

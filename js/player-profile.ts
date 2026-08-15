@@ -1,27 +1,41 @@
 /**
- * Global player profile: callsign, cargo, playtime, mute preference, installed
- * gear, and visited-planet index. Lives in the shared IndexedDB next to
- * per-planet rows and not inside planet patches. Pets stay planet-bound;
- * visited entries only cache hasPet for UI.
+ * Global player profile: callsign, cargo, playtime, mute, look sensitivity,
+ * CRT comfort, traveling crew, survey postcards, gear, and visits.
+ * Lives in the shared IndexedDB next to per-planet rows. Planet pets stay
+ * planet-bound; crew travels on the profile.
  */
 
 import type { GearId } from "./gear.ts";
 import { cloneGear, isGearId } from "./gear.ts";
 import type { Inventory } from "./config.ts";
-import { MATERIAL_ORDER } from "./config.ts";
+import {
+  LOOK_SENSITIVITY_DEFAULT,
+  MATERIAL_ORDER,
+  normalizeLookSensitivity,
+} from "./config.ts";
+import {
+  isFaunaSpeciesId,
+  type FaunaSpeciesId,
+} from "./fauna/species.ts";
+import {
+  POSTCARD_MAX_COUNT,
+  POSTCARD_THUMB_MAX_CHARS,
+} from "./postcard.ts";
 import {
   PROFILE_STORE,
   idbRequest,
   openSaveDb,
 } from "./save-db.ts";
 
-export const PLAYER_PROFILE_VERSION = 4;
+export const PLAYER_PROFILE_VERSION = 5;
 /** Profiles sealed before mute preference was stored. */
 export const PLAYER_PROFILE_VERSION_V1 = 1;
 /** Profiles sealed before gear was stored. */
 export const PLAYER_PROFILE_VERSION_V2 = 2;
 /** Profiles sealed with `builds` (renamed to `gear` in v4). */
 export const PLAYER_PROFILE_VERSION_V3 = 3;
+/** Profiles sealed before look sensitivity, CRT comfort, crew, and postcards. */
+export const PLAYER_PROFILE_VERSION_V4 = 4;
 export const PROFILE_DOCUMENT_ID = "player";
 export const DEFAULT_PLAYER_NAME = "Explorer";
 export const MAX_PLAYER_NAME_LENGTH = 24;
@@ -40,6 +54,20 @@ export interface VisitedPlanet {
   hasPet: boolean;
 }
 
+export interface CrewRecord {
+  species: FaunaSpeciesId;
+  homeSeed: string;
+  homeName: string;
+}
+
+export interface SurveyPostcard {
+  seed: string;
+  name: string;
+  capturedAt: number;
+  /** Small JPEG data URL for the local atlas. */
+  thumb: string;
+}
+
 export interface PlayerProfile {
   v: number;
   id: typeof PROFILE_DOCUMENT_ID;
@@ -50,6 +78,11 @@ export interface PlayerProfile {
   muted: boolean;
   /** Permanently installed commander gear (profile-wide). */
   gear: GearId[];
+  lookSensitivity: number;
+  /** Extra CRT calming on top of prefers-reduced-motion. */
+  reduceCrtMotion: boolean;
+  crew: CrewRecord | null;
+  postcards: SurveyPostcard[];
   visited: VisitedPlanet[];
   checksum: string;
 }
@@ -60,6 +93,10 @@ export interface ProfileView {
   inventory: Inventory;
   muted: boolean;
   gear: readonly GearId[];
+  lookSensitivity: number;
+  reduceCrtMotion: boolean;
+  crew: CrewRecord | null;
+  postcards: readonly SurveyPostcard[];
   visited: readonly VisitedPlanet[];
 }
 
@@ -79,6 +116,10 @@ export interface ProfileSession {
   setInventory(inventory: Inventory): void;
   setGear(gear: readonly GearId[]): void;
   setMuted(muted: boolean): void;
+  setLookSensitivity(value: number): void;
+  setReduceCrtMotion(reduce: boolean): void;
+  setCrew(crew: CrewRecord | null): void;
+  addPostcard(postcard: SurveyPostcard): void;
   addPlayTime(deltaMs: number): void;
   recordVisit(seed: string, name: string, hasPet: boolean): void;
   setVisitedPet(seed: string, hasPet: boolean): void;
@@ -204,6 +245,73 @@ function parseGear(raw: unknown): GearId[] | null {
   return gear;
 }
 
+function parseCrewRecord(raw: unknown): CrewRecord | null | undefined {
+  if (raw === null) return null;
+  if (!isRecord(raw)) return undefined;
+  if (!isFaunaSpeciesId(raw.species)) return undefined;
+  if (typeof raw.homeSeed !== "string" || !/^[0-9A-Fa-f]{1,8}$/.test(raw.homeSeed)) {
+    return undefined;
+  }
+  if (typeof raw.homeName !== "string") return undefined;
+  return {
+    species: raw.species,
+    homeSeed: raw.homeSeed.toUpperCase().padStart(8, "0"),
+    homeName: raw.homeName.trim().slice(0, 64) || "Unknown",
+  };
+}
+
+function parsePostcard(raw: unknown): SurveyPostcard | null {
+  if (!isRecord(raw)) return null;
+  if (typeof raw.seed !== "string" || !/^[0-9A-Fa-f]{1,8}$/.test(raw.seed)) {
+    return null;
+  }
+  if (typeof raw.name !== "string") return null;
+  if (typeof raw.capturedAt !== "number" || !Number.isFinite(raw.capturedAt)) {
+    return null;
+  }
+  if (typeof raw.thumb !== "string") return null;
+  if (!raw.thumb.startsWith("data:image/")) return null;
+  if (raw.thumb.length > POSTCARD_THUMB_MAX_CHARS) return null;
+  return {
+    seed: raw.seed.toUpperCase().padStart(8, "0"),
+    name: raw.name.trim().slice(0, 64) || "Unknown",
+    capturedAt: raw.capturedAt,
+    thumb: raw.thumb,
+  };
+}
+
+function parsePostcardList(raw: unknown): SurveyPostcard[] | null {
+  if (!Array.isArray(raw)) return null;
+  const postcards: SurveyPostcard[] = [];
+  for (const entry of raw) {
+    const parsed = parsePostcard(entry);
+    if (parsed === null) return null;
+    postcards.push(parsed);
+    if (postcards.length >= POSTCARD_MAX_COUNT) break;
+  }
+  return postcards;
+}
+
+function cloneCrew(crew: CrewRecord | null): CrewRecord | null {
+  if (crew === null) return null;
+  return {
+    species: crew.species,
+    homeSeed: crew.homeSeed.toUpperCase().padStart(8, "0"),
+    homeName: crew.homeName.trim().slice(0, 64) || "Unknown",
+  };
+}
+
+function clonePostcards(
+  postcards: readonly SurveyPostcard[],
+): SurveyPostcard[] {
+  return postcards.map((entry) => ({
+    seed: entry.seed.toUpperCase().padStart(8, "0"),
+    name: entry.name.trim().slice(0, 64) || "Unknown",
+    capturedAt: entry.capturedAt,
+    thumb: entry.thumb,
+  }));
+}
+
 function fnv1aHex(payload: string): string {
   let hash = 0x811c9dc5;
   for (let index = 0; index < payload.length; index += 1) {
@@ -213,7 +321,23 @@ function fnv1aHex(payload: string): string {
   return (hash >>> 0).toString(16).toUpperCase().padStart(8, "0");
 }
 
-/** FNV-1a over the document body excluding checksum. */
+export type PlayerProfileDraft = Omit<
+  PlayerProfile,
+  | "checksum"
+  | "lookSensitivity"
+  | "reduceCrtMotion"
+  | "crew"
+  | "postcards"
+  | "gear"
+> & {
+  gear?: GearId[];
+  lookSensitivity?: number;
+  reduceCrtMotion?: boolean;
+  crew?: CrewRecord | null;
+  postcards?: SurveyPostcard[];
+  checksum?: string;
+};
+
 export function checksumPlayerProfile(
   document: Omit<PlayerProfile, "checksum"> & { checksum?: string },
 ): string {
@@ -221,9 +345,7 @@ export function checksumPlayerProfile(
   return fnv1aHex(JSON.stringify(body));
 }
 
-export function sealPlayerProfile(
-  document: Omit<PlayerProfile, "checksum"> & { checksum?: string },
-): PlayerProfile {
+export function sealPlayerProfile(document: PlayerProfileDraft): PlayerProfile {
   const sealed: PlayerProfile = {
     v: PLAYER_PROFILE_VERSION,
     id: PROFILE_DOCUMENT_ID,
@@ -232,6 +354,12 @@ export function sealPlayerProfile(
     playTimeMs: Math.max(0, Math.floor(document.playTimeMs)),
     muted: document.muted === true,
     gear: cloneGear(document.gear ?? []),
+    lookSensitivity: normalizeLookSensitivity(
+      document.lookSensitivity ?? LOOK_SENSITIVITY_DEFAULT,
+    ),
+    reduceCrtMotion: document.reduceCrtMotion === true,
+    crew: cloneCrew(document.crew ?? null),
+    postcards: clonePostcards(document.postcards ?? []),
     visited: document.visited.map((entry) => ({ ...entry })),
     checksum: "",
   };
@@ -248,6 +376,10 @@ export function createEmptyPlayerProfile(): PlayerProfile {
     playTimeMs: 0,
     muted: DEFAULT_AUDIO_MUTED,
     gear: [],
+    lookSensitivity: LOOK_SENSITIVITY_DEFAULT,
+    reduceCrtMotion: false,
+    crew: null,
+    postcards: [],
     visited: [],
   });
 }
@@ -291,6 +423,44 @@ function checksumPlayerProfileV3(document: {
   return fnv1aHex(JSON.stringify(document));
 }
 
+/** Checksum body for legacy v4 profiles (no look/crew/postcard fields). */
+function checksumPlayerProfileV4(document: {
+  v: number;
+  id: string;
+  name: string;
+  inventory: Inventory;
+  playTimeMs: number;
+  muted: boolean;
+  gear: GearId[];
+  visited: VisitedPlanet[];
+}): string {
+  return fnv1aHex(JSON.stringify(document));
+}
+
+function upgradeLegacyProfile(fields: {
+  name: string;
+  inventory: Inventory;
+  playTimeMs: number;
+  muted: boolean;
+  gear: GearId[];
+  visited: VisitedPlanet[];
+}): PlayerProfile {
+  return sealPlayerProfile({
+    v: PLAYER_PROFILE_VERSION,
+    id: PROFILE_DOCUMENT_ID,
+    name: fields.name,
+    inventory: fields.inventory,
+    playTimeMs: fields.playTimeMs,
+    muted: fields.muted,
+    gear: fields.gear,
+    lookSensitivity: LOOK_SENSITIVITY_DEFAULT,
+    reduceCrtMotion: false,
+    crew: null,
+    postcards: [],
+    visited: fields.visited,
+  });
+}
+
 export function parsePlayerProfile(raw: unknown): PlayerProfile | null {
   if (!isRecord(raw)) return null;
   if (raw.id !== PROFILE_DOCUMENT_ID) return null;
@@ -318,10 +488,7 @@ export function parsePlayerProfile(raw: unknown): PlayerProfile | null {
       visited,
     });
     if (expected !== raw.checksum) return null;
-    // Upgrade in memory; next flush seals as current with muted + empty gear.
-    return sealPlayerProfile({
-      v: PLAYER_PROFILE_VERSION,
-      id: PROFILE_DOCUMENT_ID,
+    return upgradeLegacyProfile({
       name,
       inventory,
       playTimeMs,
@@ -343,9 +510,7 @@ export function parsePlayerProfile(raw: unknown): PlayerProfile | null {
       visited,
     });
     if (expected !== raw.checksum) return null;
-    return sealPlayerProfile({
-      v: PLAYER_PROFILE_VERSION,
-      id: PROFILE_DOCUMENT_ID,
+    return upgradeLegacyProfile({
       name,
       inventory,
       playTimeMs,
@@ -370,9 +535,32 @@ export function parsePlayerProfile(raw: unknown): PlayerProfile | null {
       visited,
     });
     if (expected !== raw.checksum) return null;
-    return sealPlayerProfile({
-      v: PLAYER_PROFILE_VERSION,
+    return upgradeLegacyProfile({
+      name,
+      inventory,
+      playTimeMs,
+      muted: raw.muted,
+      gear,
+      visited,
+    });
+  }
+
+  if (raw.v === PLAYER_PROFILE_VERSION_V4) {
+    if (typeof raw.muted !== "boolean") return null;
+    const gear = parseGear(raw.gear);
+    if (gear === null) return null;
+    const expected = checksumPlayerProfileV4({
+      v: PLAYER_PROFILE_VERSION_V4,
       id: PROFILE_DOCUMENT_ID,
+      name,
+      inventory,
+      playTimeMs,
+      muted: raw.muted,
+      gear,
+      visited,
+    });
+    if (expected !== raw.checksum) return null;
+    return upgradeLegacyProfile({
       name,
       inventory,
       playTimeMs,
@@ -384,8 +572,19 @@ export function parsePlayerProfile(raw: unknown): PlayerProfile | null {
 
   if (raw.v !== PLAYER_PROFILE_VERSION) return null;
   if (typeof raw.muted !== "boolean") return null;
+  if (typeof raw.reduceCrtMotion !== "boolean") return null;
   const gear = parseGear(raw.gear);
   if (gear === null) return null;
+  if (
+    typeof raw.lookSensitivity !== "number" ||
+    !Number.isFinite(raw.lookSensitivity)
+  ) {
+    return null;
+  }
+  const crew = parseCrewRecord(raw.crew);
+  if (crew === undefined) return null;
+  const postcards = parsePostcardList(raw.postcards);
+  if (postcards === null) return null;
 
   const candidate: PlayerProfile = {
     v: PLAYER_PROFILE_VERSION,
@@ -395,6 +594,10 @@ export function parsePlayerProfile(raw: unknown): PlayerProfile | null {
     playTimeMs,
     muted: raw.muted,
     gear,
+    lookSensitivity: normalizeLookSensitivity(raw.lookSensitivity),
+    reduceCrtMotion: raw.reduceCrtMotion,
+    crew,
+    postcards,
     visited,
     checksum: raw.checksum,
   };
@@ -407,6 +610,10 @@ export function parsePlayerProfile(raw: unknown): PlayerProfile | null {
     playTimeMs: candidate.playTimeMs,
     muted: candidate.muted,
     gear: candidate.gear,
+    lookSensitivity: candidate.lookSensitivity,
+    reduceCrtMotion: candidate.reduceCrtMotion,
+    crew: candidate.crew,
+    postcards: candidate.postcards,
     visited: candidate.visited,
   });
   if (expected !== raw.checksum) return null;
@@ -552,6 +759,10 @@ export function createProfileSession(options: {
       inventory: cloneInventory(active.inventory),
       muted: active.muted,
       gear: cloneGear(active.gear),
+      lookSensitivity: active.lookSensitivity,
+      reduceCrtMotion: active.reduceCrtMotion,
+      crew: cloneCrew(active.crew),
+      postcards: clonePostcards(active.postcards),
       visited: active.visited.map((entry) => ({ ...entry })),
     };
   }
@@ -566,6 +777,47 @@ export function createProfileSession(options: {
   function setMuted(muted: boolean): void {
     if (active.muted === muted) return;
     active = { ...active, muted };
+    scheduleSave();
+  }
+
+  function setLookSensitivity(value: number): void {
+    const next = normalizeLookSensitivity(value);
+    if (next === active.lookSensitivity) return;
+    active = { ...active, lookSensitivity: next };
+    scheduleSave();
+  }
+
+  function setReduceCrtMotion(reduce: boolean): void {
+    if (active.reduceCrtMotion === reduce) return;
+    active = { ...active, reduceCrtMotion: reduce };
+    scheduleSave();
+  }
+
+  function setCrew(crew: CrewRecord | null): void {
+    const next = cloneCrew(crew);
+    const current = active.crew;
+    if (next === null && current === null) return;
+    if (
+      next !== null &&
+      current !== null &&
+      next.species === current.species &&
+      next.homeSeed === current.homeSeed &&
+      next.homeName === current.homeName
+    ) {
+      return;
+    }
+    active = { ...active, crew: next };
+    scheduleSave();
+  }
+
+  function addPostcard(postcard: SurveyPostcard): void {
+    const parsed = parsePostcard(postcard);
+    if (parsed === null) return;
+    const next = [
+      parsed,
+      ...active.postcards.filter((entry) => entry.seed !== parsed.seed),
+    ].slice(0, POSTCARD_MAX_COUNT);
+    active = { ...active, postcards: next };
     scheduleSave();
   }
 
@@ -658,6 +910,10 @@ export function createProfileSession(options: {
     setInventory,
     setGear,
     setMuted,
+    setLookSensitivity,
+    setReduceCrtMotion,
+    setCrew,
+    addPostcard,
     addPlayTime,
     recordVisit,
     setVisitedPet,

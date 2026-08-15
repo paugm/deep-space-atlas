@@ -76,18 +76,29 @@ scaling and placement.
 
 ---
 
-## threejs-psx-shader
+## threejs-psx-shader (vendored)
 
 | | |
 | --- | --- |
 | **Author** | [lferreira457](https://github.com/lferreira457) |
 | **Project** | [threejs-psx-shader](https://github.com/lferreira457/threejs-psx-shader) |
 | **License** | [MIT](https://github.com/lferreira457/threejs-psx-shader/blob/main/LICENSE) |
-| **Used as** | Shared planet/space CRT post-processing pipeline (`js/crt.ts`) |
+| **Used as** | Pixelation + CRT GLSL under `js/crt/` (wired by `js/crt.ts`) |
 
 The upstream package still says "PSX" in its name. In this game we call the
-look a CRT pipeline. It is installed from GitHub as an npm dependency, not from
-the registry.
+look a CRT pipeline. Only the two effects we use are vendored; it is not an
+npm dependency.
+
+---
+
+## Tone.js
+
+| | |
+| --- | --- |
+| **Author** | [Yotam Mann](https://github.com/tambien) and contributors |
+| **Project** | [Tone.js](https://tonejs.github.io/) |
+| **License** | [MIT](https://github.com/Tonejs/Tone.js/blob/dev/LICENSE.md) |
+| **Used as** | Seeded planet radio (`js/planet-radio-player.ts`) |
 
 ---
 

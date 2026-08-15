@@ -14,11 +14,21 @@
     />
     <meta property="og:url" content="https://deepspaceatlas.net/" />
     <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary" />
+    <meta
+      property="og:image"
+      content="https://deepspaceatlas.net/og-image.jpg"
+    />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Deep Space Atlas" />
     <meta
       name="twitter:description"
       content="Procedural first-person mining and exploration. Share a planet with ?seed=."
+    />
+    <meta
+      name="twitter:image"
+      content="https://deepspaceatlas.net/og-image.jpg"
     />
     <title>Deep Space Atlas: Procedural Survey</title>
     <link
@@ -110,9 +120,14 @@
         <div id="fuelBar"><div id="fuelFill"></div></div>
       </div>
 
+      <div id="navMapWrap" class="hudbox hidden" aria-hidden="true">
+        <canvas id="navMap" width="128" height="128"></canvas>
+      </div>
+
       <div id="hintBar" class="hudbox">
-        HOLD <b>LMB</b> EXTRACT / TAME &nbsp;·&nbsp; HOLD <b>SPACE</b> JET
-        &nbsp;·&nbsp; <b>I</b> CARGO &nbsp;·&nbsp; <b>B</b> BUILD
+        HOLD <b>LMB</b> EXTRACT / TAME / SALVAGE &nbsp;·&nbsp;
+        HOLD <b>SPACE</b> JET &nbsp;·&nbsp; <b>N</b> NAV &nbsp;·&nbsp;
+        <b>F</b> PHOTO
       </div>
 
       <div id="roverHintBar" class="hudbox">
@@ -181,7 +196,7 @@
             </span>
           </div>
           <div class="ctl"><span>LOOK</span><kbd>MOUSE</kbd></div>
-          <div class="ctl"><span>EXTRACT / TAME</span><kbd>HOLD LMB</kbd></div>
+          <div class="ctl"><span>EXTRACT / TAME / SALVAGE</span><kbd>HOLD LMB</kbd></div>
           <div class="ctl">
             <span>JUMP · JET</span><kbd>SPACE / HOLD</kbd>
           </div>
@@ -189,6 +204,8 @@
           <div class="ctl"><span>CARGO</span><kbd>I</kbd></div>
           <div class="ctl"><span>BUILD</span><kbd>B</kbd></div>
           <div class="ctl"><span>PROFILE</span><kbd>P</kbd></div>
+          <div class="ctl"><span>NAV MAP</span><kbd>N</kbd></div>
+          <div class="ctl"><span>PHOTO</span><kbd>F</kbd></div>
           <div class="ctl"><span>MUTE</span><kbd>M</kbd></div>
         </div>
 
@@ -454,6 +471,28 @@
           <span class="profile-label">TIME SURVEYED</span>
           <span id="profilePlayTime">0s</span>
         </div>
+        <label class="profile-field" for="profileLook">
+          <span class="profile-label">LOOK SENSITIVITY</span>
+          <span class="profile-look-row">
+            <input
+              id="profileLook"
+              type="range"
+              min="0.4"
+              max="2"
+              step="0.05"
+            />
+            <span id="profileLookValue">1.00</span>
+          </span>
+        </label>
+        <label class="profile-check" for="profileReduceCrt">
+          <input id="profileReduceCrt" type="checkbox" />
+          <span>REDUCE CRT MOTION</span>
+        </label>
+        <div class="profile-section-title">CREW</div>
+        <p id="profileCrewEmpty" class="profile-empty">
+          Hold extract on a companion to enlist traveling crew.
+        </p>
+        <div id="profileCrew" class="profile-crew hidden"></div>
         <div class="profile-section-title">COMPANIONS</div>
         <p id="profilePetsEmpty" class="profile-empty">
           No bonded companions yet.
@@ -464,6 +503,11 @@
           No surveyed worlds yet.
         </p>
         <div id="profileVisited" class="profile-visited hidden"></div>
+        <div class="profile-section-title">SURVEY ATLAS</div>
+        <p id="profileAtlasEmpty" class="profile-empty">
+          Press F on a planet to stamp a postcard.
+        </p>
+        <div id="profileAtlas" class="profile-atlas hidden"></div>
         <div class="btnrow">
           <button id="profileClose" type="button">CLOSE&nbsp;&nbsp;[ P ]</button>
         </div>

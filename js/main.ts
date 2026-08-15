@@ -9,10 +9,15 @@ import {
   createBuiltinCommands,
   createCommandRegistry,
 } from "./commands/index.ts";
-import { HALF_WORLD, clamp, randomSeed } from "./config.ts";
+import { HALF_WORLD, VERTICES_PER_ROW, clamp, randomSeed } from "./config.ts";
+import { createCrtPipeline, prefersReducedMotion } from "./crt.ts";
 import { computePetCompass } from "./fauna/compass.ts";
+import { FAUNA_DEFINITIONS } from "./fauna/species.ts";
 import { createFaunaSystem } from "./fauna/system.ts";
 import { createGameplay } from "./gameplay.ts";
+import type { MinimapMarker } from "./minimap.ts";
+import { planetRadioPatch } from "./planet-radio.ts";
+import { PlanetRadio } from "./planet-radio-player.ts";
 import { createPlanetSession, createPlanetStore, hexToSeed, seedToHex } from "./planet-save.ts";
 import { applySeedParam, parseSeedParam } from "./planet-url.ts";
 import {
@@ -29,7 +34,6 @@ import {
   type GameDocument,
 } from "./game-save.ts";
 import { replaceCampaignData } from "./save-db.ts";
-import { createCrtPipeline } from "./crt.ts";
 import {
   BOARD_RANGE,
   createCinema,
@@ -106,7 +110,9 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
   );
   camera.rotation.order = "YXZ";
 
-  const crt = createCrtPipeline(webglRenderer, scene, camera);
+  const crt = createCrtPipeline(webglRenderer, scene, camera, {
+    reduceMotion: prefersReducedMotion(),
+  });
   crt.setSize(window.innerWidth, window.innerHeight);
 
   const worldSystem: WorldSystem = createWorldSystem(
@@ -145,6 +151,9 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
   let launchAscent: LaunchAscent | null = null;
   let loadChain: Promise<void> = Promise.resolve();
   let profileHydrated = false;
+  let minimapVisible = false;
+  let pendingPhoto = false;
+  let radioSeed: number | null = null;
 
   /** Immediate planet + profile write (cancels pending debounced saves). */
   function persistNow(): void {
@@ -233,6 +242,27 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     },
     onPersistCheckpoint() {
       persistNow();
+    },
+    onCrewEnlisted(crew) {
+      profileSession.setCrew(crew);
+      const world = worldSystem.current;
+      if (world !== null) {
+        void faunaSystem.syncCrew(crew, seedToHex(world.seed), {
+          x: gameplay.getPlayerPose().x,
+          z: gameplay.getPlayerPose().z,
+        });
+      }
+      refreshProfileUi();
+    },
+    currentSeedHex() {
+      const world = worldSystem.current;
+      return world !== null ? seedToHex(world.seed) : null;
+    },
+    currentWorldName() {
+      return worldSystem.current?.name ?? "Unknown";
+    },
+    onUnderwater(active) {
+      PlanetRadio.setDucked(active);
     },
   });
 
@@ -361,6 +391,7 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
 
     gameplay.loadInventory(profileSession.get().inventory);
     gameplay.loadGear(profileSession.get().gear);
+    await syncTravelingCrew();
     noteVisit(world);
     showWorldSummary(world);
     syncSeedUrl(world.seed);
@@ -368,8 +399,12 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     Sound.setSpaceBed(false);
     Sound.setUnderwater(false);
     ui.setHudMode("planet");
+    paintWorldMinimap();
+    applyLookSensitivity();
+    applyCrtComfort();
     gameplay.setActive(true);
     ui.setSessionReady(true);
+    void startPlanetRadio();
     if (!isPointerLocked()) ui.showOverlay("start");
   }
 
@@ -380,6 +415,8 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
 
   function enterSpace(seed: number): void {
     mode = "space";
+    stopPlanetRadio();
+    ui.setMinimapVisible(false);
     Sound.setUnderwater(false);
     Sound.setVehicle(null);
     Sound.setSpaceBed(true);
@@ -387,6 +424,7 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     gameplay.setActive(false);
     spaceSystem.enterNearSeed(seed);
     spaceSystem.setActive(true);
+    applyLookSensitivity();
     syncSeedUrl(seed);
     ui.setHudMode("space");
     ui.setScanReadout(null);
@@ -419,6 +457,8 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     mode = "launch";
     gameplay.setActive(false);
     ui.setPrompt("");
+    const passengerSpecies = faunaSystem.getPassengerSpecies();
+    faunaSystem.setPassengerParent(null);
     const playerPose = gameplay.getPlayerPose();
     const pad = parkedShip.getPose() ?? {
       x: playerPose.x,
@@ -445,6 +485,7 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     structureSystem.clear();
     worldSystem.dispose();
     enterSpace(seed);
+    void spaceSystem.setPassengerSpecies(passengerSpecies);
     cinema.clear();
   }
 
@@ -456,7 +497,9 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     if (mode !== "planet" || !isPointerLocked()) return;
 
     if (roverSystem.isBoarded()) {
+      faunaSystem.setPassengerParent(null);
       const exit = roverSystem.disembark();
+      roverSystem.setHeadlights(false);
       Sound.dismountVehicle();
       gameplay.setMount(null);
       ui.setRoverDriving(false);
@@ -488,6 +531,11 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
         eyeHeight: cabin.eyeHeight,
         kind: cabin.kind,
       });
+      roverSystem.setHeadlights(true);
+      const boardedRoot = roverSystem.getBoardedRoot();
+      if (boardedRoot !== null) {
+        faunaSystem.setPassengerParent(boardedRoot);
+      }
       ui.setRoverDriving(true);
       return;
     }
@@ -514,7 +562,7 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
       );
       return;
     }
-    const pet = faunaSystem.getPetBeacon();
+    const pet = faunaSystem.getCrewBeacon() ?? faunaSystem.getPetBeacon();
     if (pet === null) {
       ui.setPetCompass(null);
       return;
@@ -550,7 +598,7 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     );
     if (aimedStructure !== null) {
       ui.setPrompt(
-        BLUEPRINT_DEFINITIONS[aimedStructure.blueprintId].label.toUpperCase(),
+        `HOLD LMB — SALVAGE ${BLUEPRINT_DEFINITIONS[aimedStructure.blueprintId].label.toUpperCase()}`,
       );
       return;
     }
@@ -596,8 +644,143 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     persistRovers();
   }
 
+  function applyCrtComfort(): void {
+    crt.setReduceMotion(
+      prefersReducedMotion() || profileSession.get().reduceCrtMotion,
+    );
+  }
+
+  function applyLookSensitivity(): void {
+    const value = profileSession.get().lookSensitivity;
+    gameplay.setLookSensitivity(value);
+    spaceSystem.setLookSensitivity(value);
+  }
+
   function applyProfileMute(): void {
-    Sound.setMuted(profileSession.get().muted);
+    const muted = profileSession.get().muted;
+    Sound.setMuted(muted);
+    PlanetRadio.setMuted(muted);
+  }
+
+  function paintWorldMinimap(): void {
+    const world = worldSystem.current;
+    if (world === null) return;
+    const water = world.palette.water;
+    ui.paintMinimapTerrain({
+      heights: world.heights,
+      verticesPerRow: VERTICES_PER_ROW,
+      minimumHeight: world.minimumHeight,
+      maximumHeight: world.maximumHeight,
+      palette: {
+        low: [world.palette.low.r, world.palette.low.g, world.palette.low.b],
+        mid: [world.palette.mid.r, world.palette.mid.g, world.palette.mid.b],
+        high: [world.palette.high.r, world.palette.high.g, world.palette.high.b],
+        peak: [
+          world.palette.peak.r,
+          world.palette.peak.g,
+          world.palette.peak.b,
+        ],
+        ...(water !== undefined
+          ? { water: [water.r, water.g, water.b] as const }
+          : {}),
+      },
+      waterLevel: world.waterLevel,
+      hasSurface: world.surfaceKind !== "none",
+    });
+    ui.setMinimapVisible(minimapVisible);
+  }
+
+  function updateMinimapMarkers(): void {
+    if (!minimapVisible || mode !== "planet") return;
+    const pose = gameplay.getPlayerPose();
+    const markers: MinimapMarker[] = [
+      { x: pose.x, z: pose.z, kind: "player", yaw: pose.yaw },
+      ...structureSystem.footprints().map((entry) => ({
+        x: entry.x,
+        z: entry.z,
+        kind: "structure" as const,
+      })),
+    ];
+    const pet = faunaSystem.getPetBeacon();
+    if (pet !== null) {
+      markers.push({ x: pet.x, z: pet.z, kind: "pet" });
+    }
+    const crew = faunaSystem.getCrewBeacon();
+    if (crew !== null) {
+      markers.push({ x: crew.x, z: crew.z, kind: "crew" });
+    }
+    ui.setMinimapMarkers(markers, pose.yaw);
+  }
+
+  async function startPlanetRadio(): Promise<void> {
+    const world = worldSystem.current;
+    if (world === null) return;
+    PlanetRadio.setMuted(profileSession.get().muted);
+    if (radioSeed === world.seed) return;
+    try {
+      await PlanetRadio.start(
+        planetRadioPatch(world.seed, world.planetClassId),
+      );
+      radioSeed = world.seed;
+    } catch {
+      radioSeed = null;
+    }
+  }
+
+  function stopPlanetRadio(): void {
+    radioSeed = null;
+    PlanetRadio.setDucked(false);
+    PlanetRadio.stop();
+  }
+
+  async function syncTravelingCrew(): Promise<void> {
+    const world = worldSystem.current;
+    if (world === null) return;
+    const pose = gameplay.getPlayerPose();
+    await faunaSystem.syncCrew(
+      profileSession.get().crew,
+      seedToHex(world.seed),
+      { x: pose.x, z: pose.z },
+    );
+  }
+
+  function enlistCrewFromPet():
+    | { ok: true; label: string }
+    | { ok: false; reason: "no-pet" | "no-world" } {
+    const world = worldSystem.current;
+    if (world === null || mode !== "planet") {
+      return { ok: false, reason: "no-world" };
+    }
+    const crew = faunaSystem.enlistPet(seedToHex(world.seed), world.name);
+    if (crew === null) return { ok: false, reason: "no-pet" };
+    profileSession.setCrew(crew);
+    void faunaSystem.syncCrew(crew, seedToHex(world.seed), {
+      x: gameplay.getPlayerPose().x,
+      z: gameplay.getPlayerPose().z,
+    });
+    refreshProfileUi();
+    return { ok: true, label: FAUNA_DEFINITIONS[crew.species].label };
+  }
+
+  function releaseTravelingCrew():
+    | { ok: true; stayedAsPet: boolean; label: string }
+    | { ok: false; reason: "no-crew" } {
+    const crew = profileSession.get().crew;
+    if (crew === null) return { ok: false, reason: "no-crew" };
+    const label = FAUNA_DEFINITIONS[crew.species].label;
+    const petEntity = faunaSystem.releaseCrewAsPet();
+    if (petEntity !== null) {
+      planetSession.recordPet(petEntity);
+      const world = worldSystem.current;
+      if (world !== null) {
+        profileSession.setVisitedPet(seedToHex(world.seed), true);
+      }
+    } else {
+      faunaSystem.dismissCrewFollower();
+    }
+    profileSession.setCrew(null);
+    refreshProfileUi();
+    return { ok: true, stayedAsPet: petEntity !== null, label };
   }
 
   function toggleMuteAudio(options: { notify?: boolean } = {}): boolean {
@@ -664,6 +847,12 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
         Sound.petBond();
         return { ok: true as const, label: result.label };
       },
+      enlistCrew() {
+        return enlistCrewFromPet();
+      },
+      releaseCrew() {
+        return releaseTravelingCrew();
+      },
     }),
   );
 
@@ -688,6 +877,8 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
     await installGameDocument({ document: snapshot });
     profileSession.adopt(snapshot.profile);
     applyProfileMute();
+    applyLookSensitivity();
+    applyCrtComfort();
     gameplay.loadInventory(snapshot.profile.inventory);
     gameplay.loadGear(snapshot.profile.gear);
     if (resumeSeed !== null) {
@@ -698,6 +889,9 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
   const actions: UIActions = {
     onPlay(): void {
       if (worldSystem.current === null) return;
+      void PlanetRadio.prepare().then(() => {
+        if (mode === "planet") void startPlanetRadio();
+      });
       gameplay.requestPointerLock();
     },
     onToggleInventory(): void {
@@ -803,6 +997,49 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
       refreshProfileUi();
       ui.notify("CALLSIGN UPDATED", "#7df0cf");
     },
+    onLookSensitivity(value: number): void {
+      profileSession.setLookSensitivity(value);
+      applyLookSensitivity();
+    },
+    onReduceCrtMotion(reduce: boolean): void {
+      profileSession.setReduceCrtMotion(reduce);
+      applyCrtComfort();
+    },
+    onCrewEnlist(): void {
+      const result = enlistCrewFromPet();
+      if (!result.ok) {
+        switch (result.reason) {
+          case "no-pet":
+            ui.notify("NO COMPANION TO ENLIST", "#ffb347");
+            break;
+          case "no-world":
+            ui.notify("NO PLANET UNDERFOOT", "#ffb347");
+            break;
+          default: {
+            const exhaustive: never = result.reason;
+            throw new Error(`Unhandled enlist: ${String(exhaustive)}`);
+          }
+        }
+        Sound.uiError();
+        return;
+      }
+      Sound.petBond();
+      ui.notify(`CREW ENLISTED · ${result.label.toUpperCase()}`, "#7df0cf");
+    },
+    onCrewRelease(): void {
+      const result = releaseTravelingCrew();
+      if (!result.ok) {
+        ui.notify("NO CREW ABOARD", "#ffb347");
+        Sound.uiError();
+        return;
+      }
+      ui.notify(
+        result.stayedAsPet
+          ? `CREW SETTLED · ${result.label.toUpperCase()}`
+          : `CREW DISMISSED · ${result.label.toUpperCase()}`,
+        "#7df0cf",
+      );
+    },
     onTravelToVisited(seedHex: string): void {
       const seed = hexToSeed(seedHex);
       if (seed === null) return;
@@ -853,6 +1090,8 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
             await installGameDocument({ document });
             profileSession.adopt(document.profile);
             applyProfileMute();
+            applyLookSensitivity();
+            applyCrtComfort();
             gameplay.loadInventory(profileSession.get().inventory);
             gameplay.loadGear(profileSession.get().gear);
             const resumeSeed =
@@ -901,6 +1140,8 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
             });
             profileSession.adopt(emptyProfile);
             applyProfileMute();
+            applyLookSensitivity();
+            applyCrtComfort();
             gameplay.loadInventory(profileSession.get().inventory);
             gameplay.loadGear(profileSession.get().gear);
             await openPlanetWorld(randomSeed());
@@ -925,10 +1166,74 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
   };
   ui.bindActions(actions);
 
+  function toggleMinimap(): void {
+    if (mode !== "planet") return;
+    minimapVisible = !minimapVisible;
+    ui.setMinimapVisible(minimapVisible);
+  }
+
+  function captureSurveyPhoto(): void {
+    const world = worldSystem.current;
+    if (world === null) return;
+    const seedHex = seedToHex(world.seed);
+    const shot = ui.capturePostcard(
+      webglRenderer.domElement,
+      world.name,
+      seedHex,
+    );
+    if (shot === null) {
+      ui.notify("PHOTO FAILED", "#ff6b6b");
+      return;
+    }
+    profileSession.addPostcard({
+      seed: seedHex,
+      name: world.name,
+      capturedAt: Date.now(),
+      thumb: shot.thumb,
+    });
+    const link = document.createElement("a");
+    link.href = shot.pngDataUrl;
+    link.download = shot.filename;
+    link.click();
+    void (async () => {
+      try {
+        const blob = await (await fetch(shot.pngDataUrl)).blob();
+        const file = new File([blob], shot.filename, { type: "image/png" });
+        if (
+          navigator.share !== undefined &&
+          navigator.canShare?.({ files: [file] })
+        ) {
+          await navigator.share({
+            files: [file],
+            title: world.name,
+            text: `Deep Space Atlas  ?seed=${seedHex}`,
+          });
+        }
+      } catch {
+        // Share cancel is fine; the PNG already downloaded.
+      }
+    })();
+    ui.notify("POSTCARD STAMPED", "#7df0cf");
+    refreshProfileUi();
+  }
+
+  function finishPendingPhoto(): void {
+    if (!pendingPhoto) return;
+    pendingPhoto = false;
+    ui.setPhotoMode(true);
+    crt.render(scene, camera, 0);
+    captureSurveyPhoto();
+    ui.setPhotoMode(false);
+  }
+
   document.addEventListener("keydown", (event) => {
     if (event.target instanceof HTMLInputElement) return;
     if (event.code === "KeyE" && !event.repeat) requestBoardOrLaunch();
     if (event.code === "KeyM" && !event.repeat) toggleMuteAudio();
+    if (event.code === "KeyN" && !event.repeat) toggleMinimap();
+    if (event.code === "KeyF" && !event.repeat) {
+      if (mode === "planet" && isPointerLocked()) pendingPhoto = true;
+    }
   });
 
   // Space-mode overlay bookkeeping: gameplay ignores lock while inactive.
@@ -936,6 +1241,7 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
   document.addEventListener("pointerlockchange", () => {
     if (isPointerLocked()) {
       if (mode === "space") ui.showPlaying();
+      if (mode === "planet") void startPlanetRadio();
       return;
     }
     persistNow();
@@ -956,9 +1262,19 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
   };
   window.addEventListener("resize", handleResize);
 
+  const motionQuery =
+    typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-reduced-motion: reduce)")
+      : null;
+  motionQuery?.addEventListener("change", () => {
+    applyCrtComfort();
+  });
+
   void profileSession.hydrate().then(() => {
     profileHydrated = true;
     applyProfileMute();
+    applyLookSensitivity();
+    applyCrtComfort();
     gameplay.loadInventory(profileSession.get().inventory);
     gameplay.loadGear(profileSession.get().gear);
     const urlSeed = parseSeedParam(window.location.search);
@@ -1013,7 +1329,9 @@ function start(webglRenderer: THREE.WebGLRenderer): void {
         worldSystem.updateDayNight(time, camera.position.y);
         updateNavCompassHud();
         updateBoardPrompt();
+        updateMinimapMarkers();
         crt.render(scene, camera, deltaTime);
+        finishPendingPhoto();
         break;
       case "launch":
         // Input is locked; the cockpit ascent drives the camera skyward.

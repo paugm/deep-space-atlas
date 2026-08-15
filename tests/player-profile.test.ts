@@ -8,6 +8,7 @@ import {
   PLAYER_PROFILE_VERSION_V1,
   PLAYER_PROFILE_VERSION_V2,
   PLAYER_PROFILE_VERSION_V3,
+  PLAYER_PROFILE_VERSION_V4,
   PROFILE_DOCUMENT_ID,
   checksumPlayerProfile,
   createEmptyInventory,
@@ -88,6 +89,10 @@ describe("checksum and seal", () => {
       playTimeMs: 1200,
       muted: false,
       gear: ["thruster-coil-i"],
+      lookSensitivity: 1,
+      reduceCrtMotion: false,
+      crew: null,
+      postcards: [],
       visited: [
         {
           seed: "DEADBEEF",
@@ -132,6 +137,10 @@ describe("checksum and seal", () => {
     expect(parsePlayerProfile(empty)).toEqual(empty);
     expect(empty.muted).toBe(false);
     expect(empty.gear).toEqual([]);
+    expect(empty.lookSensitivity).toBe(1);
+    expect(empty.reduceCrtMotion).toBe(false);
+    expect(empty.crew).toBeNull();
+    expect(empty.postcards).toEqual([]);
     expect(DEFAULT_AUDIO_MUTED).toBe(false);
     for (const materialId of MATERIAL_ORDER) {
       expect(empty.inventory[materialId]).toBe(0);
@@ -297,6 +306,66 @@ describe("parsePlayerProfile", () => {
     expect(parsed?.gear).toEqual(["thruster-coil-i"]);
     expect(parsed?.inventory.copper).toBe(3);
     expect(parsePlayerProfile(parsed)).toEqual(parsed);
+  });
+
+  it("upgrades valid v4 profiles with look, CRT, crew, and postcard defaults", () => {
+    const inventory = createEmptyInventory();
+    inventory.silicate = 9;
+    const v4Body = {
+      v: PLAYER_PROFILE_VERSION_V4,
+      id: PROFILE_DOCUMENT_ID,
+      name: "Surveyor",
+      inventory,
+      playTimeMs: 2200,
+      muted: true,
+      gear: ["focus-lens-i"],
+      visited: [] as const,
+    };
+    const payload = JSON.stringify(v4Body);
+    let hash = 0x811c9dc5;
+    for (let index = 0; index < payload.length; index += 1) {
+      hash ^= payload.charCodeAt(index);
+      hash = Math.imul(hash, 0x01000193);
+    }
+    const checksum = (hash >>> 0).toString(16).toUpperCase().padStart(8, "0");
+
+    const parsed = parsePlayerProfile({ ...v4Body, checksum });
+    expect(parsed?.v).toBe(PLAYER_PROFILE_VERSION);
+    expect(parsed?.lookSensitivity).toBe(1);
+    expect(parsed?.reduceCrtMotion).toBe(false);
+    expect(parsed?.crew).toBeNull();
+    expect(parsed?.postcards).toEqual([]);
+    expect(parsed?.gear).toEqual(["focus-lens-i"]);
+    expect(parsed?.muted).toBe(true);
+  });
+
+  it("clamps look sensitivity and keeps a valid crew postcard atlas", () => {
+    const sealed = sealedProfile({
+      lookSensitivity: 9,
+      reduceCrtMotion: true,
+      crew: {
+        species: "panda",
+        homeSeed: "ab",
+        homeName: "Kepler Reach",
+      },
+      postcards: [
+        {
+          seed: "deadbeef",
+          name: "Kepler Reach",
+          capturedAt: 100,
+          thumb: "data:image/jpeg;base64,QQ",
+        },
+      ],
+    });
+    expect(sealed.lookSensitivity).toBe(2);
+    expect(sealed.reduceCrtMotion).toBe(true);
+    expect(sealed.crew).toEqual({
+      species: "panda",
+      homeSeed: "000000AB",
+      homeName: "Kepler Reach",
+    });
+    expect(sealed.postcards[0]?.seed).toBe("DEADBEEF");
+    expect(parsePlayerProfile(sealed)).toEqual(sealed);
   });
 
   it("rejects profiles missing gear or with unknown gear ids", () => {
