@@ -26,7 +26,7 @@ npm run build        # typecheck + tests, then multi-file dist/
 npm run preview      # serve dist/ over HTTP (not file://)
 ```
 
-Use Node 20.19+ or 22.12+. TypeScript is strict (`tsconfig.json`), and switches
+Use Node 22.12+, 24, or 26+. TypeScript is strict (`tsconfig.json`), and switches
 over gameplay unions use exhaustive `never` checks. See `package.json` for
 versions.
 

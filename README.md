@@ -22,9 +22,9 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-0a2e24?style=for-the-badge&labelColor=101814&color=3d7a62)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-7-0a2e24?style=for-the-badge&labelColor=101814&color=7cffb2&logo=typescript&logoColor=0a2e24)](https://www.typescriptlang.org/)
-[![Three.js](https://img.shields.io/badge/Three.js-0.185-0a2e24?style=for-the-badge&labelColor=101814&color=3d7a62&logo=threedotjs&logoColor=7cffb2)](https://threejs.org/)
+[![Three.js](https://img.shields.io/badge/Three.js-0.186-0a2e24?style=for-the-badge&labelColor=101814&color=3d7a62&logo=threedotjs&logoColor=7cffb2)](https://threejs.org/)
 [![Vite](https://img.shields.io/badge/Vite-8-0a2e24?style=for-the-badge&labelColor=101814&color=7cffb2&logo=vite&logoColor=0a2e24)](https://vite.dev/)
-[![Node](https://img.shields.io/badge/Node-20.19+%20%7C%2022.12+-0a2e24?style=for-the-badge&labelColor=101814&color=3d7a62&logo=nodedotjs&logoColor=7cffb2)](https://nodejs.org/)
+[![Node](https://img.shields.io/badge/Node-22.12+%20%7C%2024%20%7C%2026+-0a2e24?style=for-the-badge&labelColor=101814&color=3d7a62&logo=nodedotjs&logoColor=7cffb2)](https://nodejs.org/)
 
 </div>
 
@@ -142,7 +142,7 @@ Open the URL Vite prints (usually <http://localhost:5173>). Do not open
 | `npm test` | Run the unit suite once |
 | `npm run typecheck` | Strict TypeScript check only |
 
-Needs Node.js 20.19+ or 22.12+, and a browser with WebGL and Pointer Lock. Web
+Needs Node.js 22.12+, 24, or 26+, and a browser with WebGL and Pointer Lock. Web
 Workers speed up cave meshing. Web Audio and IndexedDB are optional.
 
 ## Contributing

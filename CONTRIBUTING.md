@@ -20,7 +20,7 @@ Open the URL Vite prints (usually <http://localhost:5173>). Do not open
 | `npm run build` | Typecheck, test, then write `dist/` |
 | `npm run preview` | Serve `dist/` over HTTP |
 
-Needs Node.js 20.19+ or 22.12+.
+Needs Node.js 22.12+, 24, or 26+.
 
 ## Where to look
 
